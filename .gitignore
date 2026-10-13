@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Local configuration (copy .env.example to .env)
+.env
+
+# Run artifacts: logs, recordings, plots, videos
+outputs/
+*.mp4
+*.avi
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
