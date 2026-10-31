@@ -17,6 +17,7 @@ import carla
 import cv2
 import numpy as np
 
+from svs.perception.radar import extract_radar_measurements
 from svs.sim.ground_truth import lead_truth
 from svs.sim.sensors import (ALTITUDE, AZIMUTH, DEPTH, VELOCITY, SensorSync, image_to_bgr,
                              radar_to_array, spawn_camera, spawn_radar)
@@ -101,6 +102,8 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
                 n_front = 0
                 if data["radar"] is not None:
                     radar_range, radar_rate, n_front = front_radar_summary(radar_to_array(data["radar"]))
+                    # TODO: incorporate radar measurements into the kalman filter
+                    radar_measurements = extract_radar_measurements(radar_to_array(data["radar"]))
 
                 target = 0.0 if truth.gap_m < STOP_GAP_M else TARGET_SPEED_KMH
                 ego.apply_control(speed_control(truth.ego_speed_mps, target))
