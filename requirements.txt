@@ -6,3 +6,7 @@ pygame==2.6.1
 matplotlib
 python-dotenv
 ipykernel
+
+# Tests
+pytest
+pyflakes

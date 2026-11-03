@@ -39,13 +39,42 @@ class CameraConfig:
     # 640x360 keeps a BGRA frame under 1 MB, important when streaming from a remote server.
     width: int = 640
     height: int = 360
-    fov: float = 90.0
+    # 60 deg instead of 90: cars stay detectable to ~50 m (vs ~30 m) and the monocular
+    # distance error per pixel is roughly halved. See README "Camera field of view".
+    fov: float = 60.0
     # Same as the world step, so in synchronous mode every tick has an image.
     sensor_tick: float = 0.05
-    # Windshield mount; zero pitch keeps the ground-plane distance geometry simple.
-    x: float = 1.5
+    # Windshield mount from Lab4; the slight downward pitch keeps the lead's wheels in
+    # view down to a ~1.7 m gap.
+    x: float = 1.8
     z: float = 1.4
-    pitch: float = 0.0
+    pitch: float = -6.0
+
+
+@dataclass(frozen=True)
+class CameraPerceptionConfig:
+    # "instance": CARLA instance-segmentation camera (+ synthetic noise); "yolo": optional real detector.
+    detector: str = "instance"
+    # Lead selection: our lane is ~3.5 m wide; a box already tracked gets a wider gate (hysteresis).
+    lane_half_width_m: float = 1.8
+    lane_margin_m: float = 0.5
+    max_misses: int = 5
+    # Distance estimation.
+    car_width_m: float = 1.85
+    sigma_car_width_m: float = 0.15
+    sigma_px: float = 1.5
+    # The lowest visible point of the lead is its rear tires, ahead of its rear bumper.
+    # Calibrate against ground truth once the simulator is available.
+    bottom_to_rear_m: float = 0.9
+    min_box_px: int = 12
+    border_px: int = 2
+    # Instance-segmentation detector: perfect boxes, so add noise to behave like a real detector.
+    instance_min_pixels: int = 40
+    instance_noise_px: float = 1.5
+    instance_miss_rate: float = 0.05
+    # YOLO detector (optional dependency, see requirements-yolo.txt).
+    yolo_model: str = "yolov8n.pt"
+    yolo_confidence: float = 0.4
 
 
 @dataclass(frozen=True)
@@ -64,6 +93,7 @@ class RadarConfig:
 class AppConfig:
     carla: CarlaConfig = field(default_factory=CarlaConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
+    camera_perception: CameraPerceptionConfig = field(default_factory=CameraPerceptionConfig)
     radar: RadarConfig = field(default_factory=RadarConfig)
     seed: int = _env("SEED", 42, int)
     output_dir: Path = PROJECT_ROOT / _env("OUTPUT_DIR", "outputs")

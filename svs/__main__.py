@@ -3,6 +3,7 @@
 Commands:
   check     read-only connection check against the simulator
   sensors   spawn ego + lead, stream camera and radar, compare with ground truth
+  camera    run the camera lead-vehicle pipeline live, log camera gap vs ground truth
 """
 
 import argparse
@@ -27,6 +28,12 @@ def build_parser():
     sensors.add_argument("--seconds", type=float, default=40.0, help="simulated duration")
     sensors.add_argument("--no-display", action="store_true", help="no OpenCV window (headless)")
     sensors.add_argument("--record", action="store_true", help="save the HUD video to OUTPUT_DIR")
+
+    camera = sub.add_parser("camera", help="camera lead detection + distance vs ground truth")
+    camera.add_argument("--seconds", type=float, default=60.0, help="simulated duration")
+    camera.add_argument("--detector", choices=("instance", "yolo"), help="override CameraPerceptionConfig.detector")
+    camera.add_argument("--no-display", action="store_true", help="no OpenCV window (headless)")
+    camera.add_argument("--record", action="store_true", help="save the HUD video to OUTPUT_DIR")
     return parser
 
 
@@ -57,6 +64,11 @@ def main(argv=None):
             from svs.apps import sensor_check
             record_path = cfg.output_dir / "videos" / "sensor_check.mp4" if args.record else None
             sensor_check.run(cfg, seconds=args.seconds, display=not args.no_display, record_path=record_path)
+        elif args.command == "camera":
+            from svs.apps import camera_check
+            record_path = cfg.output_dir / "videos" / "camera_check.mp4" if args.record else None
+            camera_check.run(cfg, seconds=args.seconds, display=not args.no_display, record_path=record_path,
+                             detector_name=args.detector)
     except RuntimeError as err:
         # carla raises RuntimeError for timeouts / unreachable server.
         log.error("%s", err)

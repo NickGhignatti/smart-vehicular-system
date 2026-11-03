@@ -10,13 +10,13 @@ the radar velocity has the same sign (Lab5 used abs() and lost it).
 """
 
 import logging
-import math
 import random
 
 import carla
 import cv2
 import numpy as np
 
+from svs.apps.common import draw_hud, fmt, open_video_writer, speed_control
 from svs.sim.ground_truth import lead_truth
 from svs.sim.sensors import (ALTITUDE, AZIMUTH, DEPTH, VELOCITY, SensorSync, image_to_bgr,
                              radar_to_array, spawn_camera, spawn_radar)
@@ -42,27 +42,6 @@ def front_radar_summary(points):
     return float(np.percentile(front[:, DEPTH], 15)), float(np.median(front[:, VELOCITY])), len(front)
 
 
-def speed_control(speed_mps, target_kmh):
-    """Tiny P controller (Lab3 cruise logic) to creep at a constant speed."""
-    error = target_kmh / 3.6 - speed_mps
-    if target_kmh <= 0.0:
-        return carla.VehicleControl(throttle=0.0, brake=1.0)
-    if error > 0:
-        return carla.VehicleControl(throttle=float(np.clip(0.3 + 0.15 * error, 0.0, 0.6)), brake=0.0)
-    return carla.VehicleControl(throttle=0.0, brake=float(np.clip(-0.1 * error, 0.0, 0.3)))
-
-
-def _fmt(value, spec):
-    return "--" if value is None or not math.isfinite(value) else format(value, spec)
-
-
-def draw_hud(frame_bgr, lines):
-    for i, text in enumerate(lines):
-        y = 26 + 24 * i
-        cv2.putText(frame_bgr, text, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 4)
-        cv2.putText(frame_bgr, text, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
-
-
 def run(cfg, seconds=40.0, display=True, record_path=None):
     rng = random.Random(cfg.seed)
     writer = None
@@ -78,11 +57,7 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
         sync.add("radar", sim.track(spawn_radar(sim.world, ego, cfg.radar)))
 
         if record_path is not None:
-            record_path.parent.mkdir(parents=True, exist_ok=True)
-            fps = 1.0 / sim.dt
-            writer = cv2.VideoWriter(str(record_path), cv2.VideoWriter_fourcc(*"mp4v"), fps,
-                                     (cfg.camera.width, cfg.camera.height))
-            log.info("Recording to %s", record_path)
+            writer = open_video_writer(record_path, 1.0 / sim.dt, cfg.camera.width, cfg.camera.height)
 
         steps = int(seconds / sim.dt)
         log_every = int(round(1.0 / sim.dt))
@@ -108,8 +83,8 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
 
                 lines = [
                     f"frame {frame}  ego {truth.ego_speed_mps * 3.6:5.1f} km/h",
-                    f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  TTC {_fmt(truth.ttc_s, '5.1f')} s",
-                    f"RADAR rng {_fmt(radar_range, '6.2f')} m  vel {_fmt(radar_rate, '+6.2f')} m/s  ({n_front} pts)",
+                    f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  TTC {fmt(truth.ttc_s, '5.1f')} s",
+                    f"RADAR rng {fmt(radar_range, '6.2f')} m  vel {fmt(radar_rate, '+6.2f')} m/s  ({n_front} pts)",
                 ]
                 if step % log_every == 0:
                     log.info(" | ".join(lines))

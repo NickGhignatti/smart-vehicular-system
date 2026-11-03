@@ -1,1 +1,1 @@
-"""Camera lead-vehicle detection and radar target extraction (to be implemented)."""
+"""Camera lead-vehicle perception: detection, lead selection, monocular distance."""
