@@ -17,7 +17,7 @@ import carla
 import cv2
 import numpy as np
 
-from svs.perception.radar import extract_radar_measurements
+from svs.perception.radar import RadarMeasurement, extract_radar_measurements
 from svs.sim.ground_truth import lead_truth
 from svs.sim.sensors import (ALTITUDE, AZIMUTH, DEPTH, VELOCITY, SensorSync, image_to_bgr,
                              radar_to_array, spawn_camera, spawn_radar)
@@ -69,7 +69,7 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
     writer = None
 
     with CarlaSession(cfg.carla) as sim:
-        ego, lead, _ = spawn_ego_and_lead(sim.world, rng, gap_m=35.0)
+        ego, lead, _ = spawn_ego_and_lead(sim.world, rng, gap_m=35.0, straight_len_m=120.0)
         sim.track(ego)
         sim.track(lead)
         lead.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
@@ -100,6 +100,7 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
 
                 radar_range = radar_rate = None
                 n_front = 0
+                radar_measurements: RadarMeasurement | None = None
                 if data["radar"] is not None:
                     radar_range, radar_rate, n_front = front_radar_summary(radar_to_array(data["radar"]))
                     # TODO: incorporate radar measurements into the kalman filter
@@ -112,7 +113,7 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
                 lines = [
                     f"frame {frame}  ego {truth.ego_speed_mps * 3.6:5.1f} km/h",
                     f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  TTC {_fmt(truth.ttc_s, '5.1f')} s",
-                    f"RADAR rng {_fmt(radar_range, '6.2f')} m  vel {_fmt(radar_rate, '+6.2f')} m/s  ({n_front} pts)",
+                    f"RADAR rng {_fmt(radar_measurements.range_m if radar_measurements is not None else None, '6.2f')}m  vel {_fmt(radar_measurements.range_rate_mps if radar_measurements is not None else None, '+6.2f')} m/s  ({n_front} pts)",
                 ]
                 if step % log_every == 0:
                     log.info(" | ".join(lines))
