@@ -1,5 +1,5 @@
 # CARLA 0.9.15 client wheels exist only for Python 3.7-3.10; must match the server version.
-carla==0.9.15
+carla==0.9.16
 numpy<2
 opencv-python
 pygame==2.6.1
