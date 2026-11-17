@@ -13,6 +13,7 @@ MIN_RANGE_M = 1.0
 CORRIDOR_HALF_WIDTH_M = 1.5
 MIN_HEIGHT_M = -0.8  # below this the detection is most likely the road surface
 DEFAULT_PERCENTILE = 10
+CLUSTER_DEPTH_M = 3.0
 
 
 @dataclass
@@ -34,10 +35,13 @@ def extract_radar_measurements(points, percentile=DEFAULT_PERCENTILE) -> RadarMe
     mask: np.ndarray = _front_corridor_mask(cartesian)
     front_xyz: np.ndarray = cartesian[mask]
     front_points: np.ndarray = points[mask]
-    num_points: int = len(front_points)
 
-    if num_points == 0:
+    if len(front_points) == 0:
         return None
+
+    vehicle_mask: np.ndarray = _nearest_vehicle_mask(front_xyz, percentile)
+    front_xyz = front_xyz[vehicle_mask]
+    front_points = front_points[vehicle_mask]
 
     # Radial velocity -> longitudinal one.
     longitudinal_velocity = front_points[:, VELOCITY] / (
@@ -47,7 +51,7 @@ def extract_radar_measurements(points, percentile=DEFAULT_PERCENTILE) -> RadarMe
         range_m=float(np.percentile(front_xyz[:, 0], percentile)),
         range_rate_mps=float(-np.median(longitudinal_velocity)),
         lateral_m=float(np.median(front_xyz[:, 1])),
-        n_points=num_points,
+        n_points=len(front_points),
     )
 
 def _to_cartesian(points) -> np.ndarray:
@@ -73,3 +77,11 @@ def _front_corridor_mask(xyz, min_range_m=MIN_RANGE_M, half_width_m=CORRIDOR_HAL
     """
     x, y, z = xyz[:, 0], xyz[:, 1], xyz[:, 2]
     return (x > min_range_m) & (np.abs(y) < half_width_m) & (z > min_height_m)
+
+
+def _nearest_vehicle_mask(xyz, percentile, depth_m=CLUSTER_DEPTH_M) -> np.ndarray:
+    """
+    Boolean mask of the detections within depth_m behind the nearest return, i.e. the lead only.
+    """
+    x = xyz[:, 0]
+    return x < np.percentile(x, percentile) + depth_m

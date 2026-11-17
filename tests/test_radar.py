@@ -161,6 +161,13 @@ class ExtractRadarMeasurementsTest(unittest.TestCase):
         noisy = extract_radar_measurements(make_points(*(self.lead_points() + clutter)))
         self.assertEqual(noisy, clean)
 
+    def test_vehicle_behind_the_lead_does_not_affect_measurement(self):
+        # more points than the lead, own velocity and y (45 m * sin(1.5 deg) = 1.18 m, inside the corridor)
+        far_vehicle = [(45.0, 1.5, 0.0, -2.0)] * 6
+        clean = extract_radar_measurements(make_points(*self.lead_points()))
+        both = extract_radar_measurements(make_points(*(self.lead_points() + far_vehicle)))
+        self.assertEqual(both, clean)
+
     def test_n_points_counts_only_corridor_detections(self):
         rows = self.lead_points() + [(18.0, 12.0, 0.0, 1.0), (0.6, 0.0, 0.0, 1.0)]
         result = extract_radar_measurements(make_points(*rows))
