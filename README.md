@@ -65,7 +65,7 @@ svs/
     session.py       CarlaSession: connect, sync mode, actor tracking, cleanup
     spawn.py         straight-lane search, ego/lead spawning, spectator
     sensors.py       camera/radar spawn, raw-data conversion, frame-synced reads
-    ground_truth.py  true gap, range-rate, TTC (evaluation only)
+    ground_truth.py  true gap, lateral offset, range-rate, TTC (evaluation only)
   apps/              check.py, sensor_check.py
   perception/        camera detector, radar target extraction      (todo)
   fusion/            association + Kalman filter + track manager   (todo)
