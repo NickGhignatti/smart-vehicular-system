@@ -64,12 +64,13 @@ def draw_hud(frame_bgr, lines):
         cv2.putText(frame_bgr, text, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
 
 
-def run(cfg, seconds=40.0, display=True, record_path=None):
+def run(cfg, seconds=40.0, display=True, record_path=None, lateral_offset_m=0.0):
     rng = random.Random(cfg.seed)
     writer = None
 
     with CarlaSession(cfg.carla) as sim:
-        ego, lead, _ = spawn_ego_and_lead(sim.world, rng, gap_m=35.0, straight_len_m=120.0)
+        ego, lead, _ = spawn_ego_and_lead(sim.world, rng, gap_m=35.0, straight_len_m=120.0,
+                                         lateral_offset_m=lateral_offset_m)
         sim.track(ego)
         sim.track(lead)
         lead.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
@@ -112,8 +113,8 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
 
                 lines = [
                     f"frame {frame}  ego {truth.ego_speed_mps * 3.6:5.1f} km/h",
-                    f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  TTC {_fmt(truth.ttc_s, '5.1f')} s",
-                    f"RADAR rng {_fmt(radar_measurements.range_m if radar_measurements is not None else None, '6.2f')}m  vel {_fmt(radar_measurements.range_rate_mps if radar_measurements is not None else None, '+6.2f')} m/s  ({n_front} pts)",
+                    f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  TTC {_fmt(truth.ttc_s, '5.1f')} s  lat {truth.lateral_m:+5.2f} m",
+                    f"RADAR rng {_fmt(radar_measurements.range_m if radar_measurements is not None else None, '6.2f')}m  vel {_fmt(radar_measurements.range_rate_mps if radar_measurements is not None else None, '+6.2f')} m/s  lat {_fmt(radar_measurements.lateral_m if radar_measurements is not None else None, '+5.2f')} m  ({n_front} pts)",
                 ]
                 if step % log_every == 0:
                     log.info(" | ".join(lines))

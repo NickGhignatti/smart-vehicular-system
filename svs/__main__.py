@@ -26,6 +26,7 @@ def build_parser():
     sensors = sub.add_parser("sensors", help="camera + radar smoke test with ground truth")
     sensors.add_argument("--seconds", type=float, default=40.0, help="simulated duration")
     sensors.add_argument("--no-display", action="store_true", help="no OpenCV window (headless)")
+    sensors.add_argument("--lateral", type=float, default=0.0, help="lead lateral offset in m (+ = right of lane centre)")
     sensors.add_argument("--record", action="store_true", help="save the HUD video to OUTPUT_DIR")
     return parser
 
@@ -56,7 +57,8 @@ def main(argv=None):
         elif args.command == "sensors":
             from svs.apps import sensor_check
             record_path = cfg.output_dir / "videos" / "sensor_check.mp4" if args.record else None
-            sensor_check.run(cfg, seconds=args.seconds, display=not args.no_display, record_path=record_path)
+            sensor_check.run(cfg, seconds=args.seconds, display=not args.no_display, record_path=record_path,
+                           lateral_offset_m=args.lateral)
     except RuntimeError as err:
         # carla raises RuntimeError for timeouts / unreachable server.
         log.error("%s", err)

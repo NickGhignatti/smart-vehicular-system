@@ -82,8 +82,11 @@ def find_straight_lane_starts(carla_map, rng, length_m=250.0, step_m=2.0, max_ya
     return candidates
 
 
-def spawn_ego_and_lead(world, rng, gap_m=25.0, straight_len_m=250.0):
+def spawn_ego_and_lead(world, rng, gap_m=25.0, straight_len_m=250.0, lateral_offset_m=0.0):
     """Spawn ego and lead vehicle on the same straight lane, lead `gap_m` ahead (center to center).
+
+    `lateral_offset_m` shifts the lead sideways from the lane centre (positive = to the right,
+    same sign as `lateral_m` in the ground truth and radar).
 
     Both start braked with autopilot off. Returns (ego, lead, start_waypoint).
     The caller is responsible for registering the actors for cleanup.
@@ -106,7 +109,9 @@ def spawn_ego_and_lead(world, rng, gap_m=25.0, straight_len_m=250.0):
         for lead_wp in start_wp.next(gap_m):
             if lead_wp.lane_id != start_wp.lane_id:
                 continue
-            lead = world.try_spawn_actor(lead_bp, carla.Transform(lead_wp.transform.location + lift, lead_wp.transform.rotation))
+            right = lead_wp.transform.get_right_vector()
+            shift = carla.Location(x=right.x * lateral_offset_m, y=right.y * lateral_offset_m)
+            lead = world.try_spawn_actor(lead_bp, carla.Transform(lead_wp.transform.location + lift + shift, lead_wp.transform.rotation))
             if lead is not None:
                 break
 
