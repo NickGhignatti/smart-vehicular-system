@@ -62,9 +62,9 @@ class CameraPerceptionConfig:
     # Distance estimation.
     car_width_m: float = 1.85
     sigma_car_width_m: float = 0.15
-    sigma_px: float = 1.5
+    sigma_px: float = 1.5              # TUNE: box-edge pixel noise of the detector in use
     # The lowest visible point of the lead is its rear tires, ahead of its rear bumper.
-    # Calibrate against ground truth once the simulator is available.
+    # TUNE: `python -m svs calibrate` reports the camera bias on an approach recording.
     bottom_to_rear_m: float = 0.9
     min_box_px: int = 12
     border_px: int = 2
@@ -90,11 +90,99 @@ class RadarConfig:
 
 
 @dataclass(frozen=True)
+class RadarPerceptionConfig:
+    # 1-sigma noise of RadarMeasurement, used as Kalman measurement noise.
+    # TUNE: fit from `python -m svs calibrate` on an approach recording.
+    sigma_range_m: float = 0.15
+    sigma_range_per_m: float = 0.005   # extra range sigma per meter of range
+    sigma_rate_mps: float = 0.15
+    # Degradation applied on top of the CARLA detections (CARLA's radar has no noise model).
+    # Real automotive radars: ~0.1 m / ~0.1 m/s per detection, occasional ghost targets.
+    # TUNE: keep these fixed across modes; they define the "realistic radar" of the study.
+    point_depth_noise_m: float = 0.10
+    point_velocity_noise_mps: float = 0.10
+    frame_dropout: float = 0.03        # probability that a whole radar frame is lost
+    # Ghost targets: stationary false returns in the corridor (manhole covers, bridges, debris).
+    # Each lives ghost_duration_s and moves towards the ego at the ego speed, like a real
+    # stationary object, so a radar-only system sees a target closing in fast.
+    ghosts_per_minute: float = 3.0
+    ghost_duration_s: float = 0.8
+    min_points: int = 2                # fewer corridor points than this = no measurement
+
+
+@dataclass(frozen=True)
+class FusionConfig:
+    # Constant-velocity model: white-noise acceleration of the gap (stop-and-go: lead brakes/accelerates).
+    # TUNE: too small = laggy estimate on braking; too large = noisy closing speed.
+    sigma_accel_mps2: float = 1.5
+    # Gating: chi-square 99% quantiles for 1 and 2 degrees of freedom.
+    gate_chi2_1d: float = 6.63
+    gate_chi2_2d: float = 9.21
+    # Camera measurement sigma multiplier (the pixel-error model may be optimistic in CARLA).
+    # TUNE: set so the camera NIS mean is ~1 (calibrate reports it).
+    camera_sigma_scale: float = 1.0
+    radar_sigma_scale: float = 1.0
+    # Track management ("object persistence").
+    confirm_hits: int = 3              # M of N updates to confirm a track
+    confirm_window: int = 5
+    max_coast_s: float = 1.5           # predict-only time before the track is dropped
+    max_gap_sigma_m: float = 4.0       # drop the track if the gap uncertainty grows beyond this
+    reinit_after: int = 6              # consecutive gated-out frames before re-initializing (lead changed)
+    init_rate_sigma_mps: float = 3.0   # closing-speed uncertainty of a track started from the camera only
+    # Fused initialization: camera and radar must agree laterally to start a track from both.
+    max_lateral_disagreement_m: float = 1.5
+    # Fused mode: a track is confirmed only after the camera has seen it at least once, so a
+    # radar-only false target (ghost) can never raise a warning. Once confirmed, the track
+    # keeps running on radar alone through camera occlusions.
+    fused_confirm_requires_camera: bool = True
+
+
+@dataclass(frozen=True)
+class WarningConfig:
+    # Forward-collision warning on TTC with hysteresis + persistence (stable, no flicker).
+    # TUNE: on the tuning recordings; report results on the test recordings.
+    ttc_on_s: float = 2.5
+    ttc_off_s: float = 3.2
+    on_frames: int = 3                 # consecutive frames below ttc_on to raise the warning
+    min_on_s: float = 1.0              # once raised, keep it at least this long
+    min_closing_mps: float = 0.5       # ignore TTC when barely closing in
+    # Evaluation labels: a warning is justified if ground-truth TTC drops below ttc_on + margin
+    # within +-tolerance of the warning event.
+    label_margin_s: float = 0.5
+    label_tolerance_s: float = 0.5
+
+
+@dataclass(frozen=True)
+class ControlConfig:
+    # ACC-style gap keeping: desired gap = standstill_gap + time_gap * ego speed.
+    standstill_gap_m: float = 4.0
+    time_gap_s: float = 1.5
+    k_gap: float = 0.25                # 1/s^2
+    k_rate: float = 0.7                # 1/s
+    cruise_speed_mps: float = 30 / 3.6
+    k_speed: float = 0.5               # 1/s, cruise speed tracking when there is no lead
+    max_accel_mps2: float = 1.5
+    comfort_decel_mps2: float = 3.0    # "gentle slow-down"
+    emergency_decel_mps2: float = 6.0  # only when TTC < emergency_ttc_s
+    emergency_ttc_s: float = 1.2
+    max_jerk_mps3: float = 2.5
+    # Acceleration -> pedals mapping for CARLA vehicles.
+    # TUNE: `python -m svs run --control acc` and compare commanded vs actual acceleration.
+    throttle_per_mps2: float = 0.25
+    throttle_bias: float = 0.15        # throttle needed to hold speed (rolling resistance)
+    brake_per_mps2: float = 0.12
+
+
+@dataclass(frozen=True)
 class AppConfig:
     carla: CarlaConfig = field(default_factory=CarlaConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
     camera_perception: CameraPerceptionConfig = field(default_factory=CameraPerceptionConfig)
     radar: RadarConfig = field(default_factory=RadarConfig)
+    radar_perception: RadarPerceptionConfig = field(default_factory=RadarPerceptionConfig)
+    fusion: FusionConfig = field(default_factory=FusionConfig)
+    warning: WarningConfig = field(default_factory=WarningConfig)
+    control: ControlConfig = field(default_factory=ControlConfig)
     seed: int = _env("SEED", 42, int)
     output_dir: Path = PROJECT_ROOT / _env("OUTPUT_DIR", "outputs")
     log_level: str = _env("LOG_LEVEL", "INFO")

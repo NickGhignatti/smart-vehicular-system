@@ -22,6 +22,7 @@ class CameraMeasurement:
     gap_m: float          # bumper-to-bumper, like svs.sim.ground_truth.LeadTruth.gap_m
     sigma_m: float        # 1-sigma uncertainty of gap_m, used as Kalman measurement noise
     azimuth_rad: float    # bearing of the box center, for association with the radar
+    lateral_m: float      # lateral position of the box center, positive right (same as radar y)
     method: str           # "ground", "width" or "ground+width"
 
 
@@ -98,6 +99,7 @@ class FrontCameraTracker:
             gap_m=distance - self.bumper_offset_m,
             sigma_m=sigma,
             azimuth_rad=self.camera.bearing(self.lead.center_u),
+            lateral_m=self.camera.lateral_offset(self.lead.center_u, distance),
             method=method,
         )
         return self.measurement

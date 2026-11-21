@@ -60,6 +60,26 @@ def decode_instance_image(bgra):
     return tags, ids
 
 
+def perturb_detections(detections, width, height, noise_px, miss_rate, rng, border_px=1.0):
+    """Make perfect boxes look like a real detector's: Gaussian edge noise and random misses.
+
+    Edges that touch the image border stay on it: a truncated object is still truncated, so
+    the distance estimation keeps refusing to use that edge.
+    """
+    limits = np.array([0.0, 0.0, width, height])
+    out = []
+    for det in detections:
+        if miss_rate > 0 and rng.random() < miss_rate:
+            continue
+        box = np.array(det.box, dtype=float)
+        on_border = np.abs(box - limits) <= border_px
+        if noise_px > 0:
+            box = np.where(on_border, box, box + rng.normal(0.0, noise_px, size=4))
+        box = np.clip(box, 0, [width, height, width, height])
+        out.append(Detection(tuple(float(x) for x in box), det.score, det.label))
+    return out
+
+
 class InstanceSegmentationDetector:
     required_images = ("instance",)
 
@@ -69,24 +89,44 @@ class InstanceSegmentationDetector:
         self.miss_rate = miss_rate
         self.rng = rng if rng is not None else np.random.default_rng()
 
-    def detect(self, images):
-        tags, ids = decode_instance_image(images["instance"])
-        height, width = tags.shape
+    def clean_boxes(self, instance_bgra):
+        """Exact box of every visible vehicle (only its visible pixels, so occlusion is handled)."""
+        tags, ids = decode_instance_image(instance_bgra)
         vehicle = np.isin(tags, list(VEHICLE_TAGS))
-
         detections = []
         for instance_id in np.unique(ids[vehicle]):
             rows, cols = np.nonzero(vehicle & (ids == instance_id))
             if rows.size < self.min_pixels:
                 continue
-            if self.rng.random() < self.miss_rate:
-                continue
-            box = np.array([cols.min(), rows.min(), cols.max() + 1, rows.max() + 1], dtype=float)
-            box += self.rng.normal(0.0, self.noise_px, size=4)
-            box = np.clip(box, 0, [width, height, width, height])
+            box = (float(cols.min()), float(rows.min()), float(cols.max() + 1), float(rows.max() + 1))
             label = VEHICLE_TAGS[int(np.bincount(tags[rows, cols]).argmax())]
-            detections.append(Detection(tuple(float(x) for x in box), 1.0, label))
+            detections.append(Detection(box, 1.0, label))
         return detections
+
+    def detect(self, images):
+        height, width = images["instance"].shape[:2]
+        return perturb_detections(self.clean_boxes(images["instance"]), width, height,
+                                  self.noise_px, self.miss_rate, self.rng)
+
+
+class ReplayDetector:
+    """Detector for recorded runs: the boxes come with the frame (images["detections"]).
+
+    Recordings store clean boxes; the same noise/miss model as the live detector is applied
+    here, so the detector noise can be changed without re-running the simulator.
+    """
+    required_images = ("detections",)
+
+    def __init__(self, width, height, noise_px=0.0, miss_rate=0.0, rng=None):
+        self.width = width
+        self.height = height
+        self.noise_px = noise_px
+        self.miss_rate = miss_rate
+        self.rng = rng if rng is not None else np.random.default_rng()
+
+    def detect(self, images):
+        return perturb_detections(images["detections"], self.width, self.height,
+                                  self.noise_px, self.miss_rate, self.rng)
 
 
 class YoloDetector:
