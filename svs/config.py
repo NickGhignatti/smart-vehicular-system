@@ -7,6 +7,8 @@ Two sources, on purpose:
   must be identical for everyone and are versioned with the code.
 """
 
+import dataclasses
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -192,3 +194,33 @@ class AppConfig:
 
 def load_config():
     return AppConfig()
+
+
+def with_overrides(cfg, overrides):
+    """Return cfg with "section.field" -> value overrides applied (strings are cast to the field type).
+
+    Example: {"fusion.sigma_accel_mps2": "2.0", "warning.ttc_on_s": 2.2}
+    Used by `--set` / `--config-file` on the command line and by the tuning tools.
+    """
+    sections = {}
+    for key, value in overrides.items():
+        section, _, name = key.partition(".")
+        if not name or not hasattr(cfg, section) or not hasattr(getattr(cfg, section), name):
+            raise KeyError(f"Unknown config key {key!r} (expected section.field, e.g. fusion.sigma_accel_mps2)")
+        current = getattr(getattr(cfg, section), name)
+        if isinstance(value, str) and not isinstance(current, str):
+            if isinstance(current, bool):
+                value = value.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                value = type(current)(value)
+        sections.setdefault(section, {})[name] = value
+    for section, values in sections.items():
+        cfg = dataclasses.replace(cfg, **{section: dataclasses.replace(getattr(cfg, section), **values)})
+    return cfg
+
+
+def load_overrides_file(path):
+    """JSON file {"section.field": value, ...} (written by `calibrate` / `tune`)."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return {k: v for k, v in data.items() if not k.startswith("_")}
