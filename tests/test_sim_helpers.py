@@ -7,7 +7,6 @@ import carla
 import pytest
 
 from svs.apps.common import bumper_offset
-from svs.apps.sensor_check import front_radar_summary
 from svs.sim.ground_truth import lead_truth, time_to_collision
 from svs.sim.sensors import SensorSync, radar_to_array
 
@@ -44,12 +43,11 @@ def test_sensor_sync_holds_future_frames_and_reports_missing():
     assert sync.get(12)["radar"].frame == 12   # the held-back message is delivered
 
 
-def test_radar_to_array_and_front_summary():
-    dets = [NS(depth=20.0, azimuth=0.01, altitude=0.0, velocity=-3.0),
-            NS(depth=50.0, azimuth=0.5, altitude=0.0, velocity=-8.0)]   # 0.5 rad: outside the corridor
+def test_radar_to_array_column_order():
+    dets = [NS(depth=20.0, azimuth=0.01, altitude=0.02, velocity=-3.0)]
     points = radar_to_array(dets)
-    assert points.shape == (2, 4)
-    assert front_radar_summary(points) == (20.0, -3.0, 1)
+    assert points.shape == (1, 4)
+    assert points[0].tolist() == [20.0, 0.01, 0.02, -3.0]
     assert radar_to_array([]).shape == (0, 4)
 
 

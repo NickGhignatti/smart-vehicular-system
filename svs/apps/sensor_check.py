@@ -5,8 +5,8 @@ and creeps the ego towards the lead in synchronous mode. Each frame it shows the
 image with the radar reading next to the ground truth.
 
 This is also the first experiment of the project: CARLA's radar velocity sign
-convention. As the ego closes in, the ground-truth range-rate is negative; check whether
-the radar velocity has the same sign (Lab5 used abs() and lost it).
+convention. As the ego closes in, the ground-truth range-rate is negative; check that
+the radar range-rate has the same sign (Lab5 used abs() and lost it).
 """
 
 import logging
@@ -14,12 +14,11 @@ import random
 
 import carla
 import cv2
-import numpy as np
 
 from svs.apps.common import draw_hud, fmt, open_video_writer, speed_control
+from svs.perception.radar import extract_radar_measurements
 from svs.sim.ground_truth import lead_truth
-from svs.sim.sensors import (ALTITUDE, AZIMUTH, DEPTH, VELOCITY, SensorSync, image_to_bgr,
-                             radar_to_array, spawn_camera, spawn_radar)
+from svs.sim.sensors import SensorSync, image_to_bgr, radar_to_array, spawn_camera, spawn_radar
 from svs.sim.session import CarlaSession
 from svs.sim.spawn import follow_spectator, spawn_ego_and_lead
 
@@ -27,27 +26,15 @@ log = logging.getLogger(__name__)
 
 TARGET_SPEED_KMH = 15.0
 STOP_GAP_M = 6.0
-CORRIDOR_AZIMUTH_DEG = 5.0
-CORRIDOR_ALTITUDE_DEG = 5.0
 
 
-def front_radar_summary(points):
-    """Robust range / range-rate of the detections in a narrow front corridor (Lab5 style)."""
-    mask = ((np.abs(np.degrees(points[:, AZIMUTH])) < CORRIDOR_AZIMUTH_DEG)
-            & (np.abs(np.degrees(points[:, ALTITUDE])) < CORRIDOR_ALTITUDE_DEG)
-            & (points[:, DEPTH] > 1.0))
-    front = points[mask]
-    if len(front) == 0:
-        return None, None, 0
-    return float(np.percentile(front[:, DEPTH], 15)), float(np.median(front[:, VELOCITY])), len(front)
-
-
-def run(cfg, seconds=40.0, display=True, record_path=None):
+def run(cfg, seconds=40.0, display=True, record_path=None, lateral_offset_m=0.0):
     rng = random.Random(cfg.seed)
     writer = None
 
     with CarlaSession(cfg.carla) as sim:
-        ego, lead, _ = spawn_ego_and_lead(sim.world, rng, gap_m=35.0)
+        ego, lead, _ = spawn_ego_and_lead(sim.world, rng, gap_m=35.0, straight_len_m=120.0,
+                                         lateral_offset_m=lateral_offset_m)
         sim.track(ego)
         sim.track(lead)
         lead.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
@@ -72,10 +59,9 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
                 for name, item in data.items():
                     missing[name] += item is None
 
-                radar_range = radar_rate = None
-                n_front = 0
+                radar = None
                 if data["radar"] is not None:
-                    radar_range, radar_rate, n_front = front_radar_summary(radar_to_array(data["radar"]))
+                    radar = extract_radar_measurements(radar_to_array(data["radar"]))
 
                 target = 0.0 if truth.gap_m < STOP_GAP_M else TARGET_SPEED_KMH
                 ego.apply_control(speed_control(truth.ego_speed_mps, target))
@@ -83,8 +69,11 @@ def run(cfg, seconds=40.0, display=True, record_path=None):
 
                 lines = [
                     f"frame {frame}  ego {truth.ego_speed_mps * 3.6:5.1f} km/h",
-                    f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  TTC {fmt(truth.ttc_s, '5.1f')} s",
-                    f"RADAR rng {fmt(radar_range, '6.2f')} m  vel {fmt(radar_rate, '+6.2f')} m/s  ({n_front} pts)",
+                    f"GT    gap {truth.gap_m:6.2f} m  rate {truth.range_rate_mps:+6.2f} m/s  "
+                    f"TTC {fmt(truth.ttc_s, '5.1f')} s  lat {truth.lateral_m:+5.2f} m",
+                    f"RADAR rng {fmt(radar and radar.range_m, '6.2f')} m  "
+                    f"vel {fmt(radar and radar.range_rate_mps, '+6.2f')} m/s  "
+                    f"lat {fmt(radar and radar.lateral_m, '+5.2f')} m  ({radar.n_points if radar else 0} pts)",
                 ]
                 if step % log_every == 0:
                     log.info(" | ".join(lines))

@@ -1,5 +1,7 @@
-# CARLA 0.9.15 client wheels exist only for Python 3.7-3.10; must match the server version.
-carla==0.9.15
+# CARLA client must match the server version exactly (carla.Client vs server 0.9.x).
+# 0.9.16 wheels: Python 3.10-3.12. If the simulator you use is 0.9.15 (e.g. the lab PCs,
+# C:/Carla_0.9.15), pin carla==0.9.15 instead (wheels for Python 3.7-3.10 only).
+carla==0.9.16
 numpy<2
 opencv-python
 pygame==2.6.1

@@ -23,7 +23,7 @@ Build a small sensor-fusion project that tracks the lead vehicle smoothly in sto
 
 ## Setup
 
-The CARLA 0.9.15 Python client only exists for **Python 3.7–3.10**, and it must match the server version.
+The CARLA Python client must match the server version exactly. The repo pins **0.9.16** (Python 3.10–3.12); for a 0.9.15 server (lab PCs) pin `carla==0.9.15` (Python 3.7–3.10).
 With [uv](https://docs.astral.sh/uv/):
 
 ```bash
@@ -109,8 +109,9 @@ svs/
     session.py         CarlaSession: connect, sync mode, actor tracking, cleanup
     spawn.py           straight-lane search, ego/lead spawning, spectator
     sensors.py         camera/radar spawn, raw-data conversion, frame-synced reads
-    ground_truth.py    true gap, range-rate, TTC (evaluation only)
+    ground_truth.py    true gap, lateral offset, range-rate, TTC (evaluation only)
   perception/
+    radar.py           radar detections -> RadarMeasurement (range, range-rate, lateral)
     camera_geometry.py pinhole model, projection, monocular distance + uncertainty
     detector.py        Detection, instance-segmentation and YOLO detectors
     lead_selector.py   lead vehicle in our lane, with hysteresis
