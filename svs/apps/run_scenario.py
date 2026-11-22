@@ -128,6 +128,8 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
         others = {}            # role -> ScriptedVehicle
         cut_in_driver = DriverModel(dataclasses.replace(plan, events=[]))
         safety_brakes = 0
+        accel_log = []          # (commanded, actual) in --control acc, to check the pedal mapping
+        previous_v = speed_mps(ego)
         log_every = int(round(1.0 / dt))
         try:
             for step in range(len(plan.lead_speed)):
@@ -167,11 +169,14 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
                 if control == "acc":
                     cmd = result.command
                     throttle, brake = cmd.throttle, cmd.brake
+                    if cmd.reason in ("follow", "cruise") and ego_v > 1.0:
+                        accel_log.append((cmd.accel_mps2, (ego_v - previous_v) / dt))
                 else:
                     gap = truth.gap_m if truth else None
                     lead_v = truth.lead_speed_mps if truth else 0.0
                     accel = approach_accel(gap, ego_v) if scenario == "approach" else driver.accel(t, ego_v, gap, lead_v)
                     throttle, brake = ego_speed_ctrl.step(dt, ego_v, ego_reference.step(dt, accel, ego_v))
+                previous_v = ego_v
                 if truth is not None and truth.gap_m < SAFETY_GAP_M and ego_v > 0.1:
                     throttle, brake = 0.0, 1.0
                     safety_brakes += 1
@@ -205,7 +210,27 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
                 log.info("Recording (%d frames, %.0f s) saved to %s", len(recording), recording.duration_s, out)
             if safety_brakes:
                 log.warning("Safety brake used on %d frames (ground-truth gap < %.1f m)", safety_brakes, SAFETY_GAP_M)
+            if accel_log:
+                pedal_mapping_report(np.array(accel_log), cfg.control)
     return out
+
+
+def pedal_mapping_report(log_array, ccfg, lag_frames=6):
+    """Compare commanded vs actual acceleration and suggest pedal gains (ControlConfig TUNE values).
+
+    The actual acceleration lags the command (powertrain / brake build-up), so it is compared
+    with the command lag_frames earlier. Ratio < 1: the car responds less than asked -> raise the gain.
+    """
+    cmd, actual = log_array[:-lag_frames, 0], log_array[lag_frames:, 1]
+    lines = []
+    for name, sel, key in (("accelerating", cmd > 0.3, "throttle_per_mps2"), ("braking", cmd < -0.5, "brake_per_mps2")):
+        if sel.sum() < 20:
+            lines.append(f"{name}: not enough samples")
+            continue
+        ratio = float(np.median(actual[sel] / cmd[sel]))
+        current = getattr(ccfg, key)
+        lines.append(f"{name}: actual/commanded = {ratio:.2f} -> suggest --set control.{key}={current / max(ratio, 0.1):.3f}")
+    log.info("Pedal mapping check (%d samples): %s", len(log_array), "; ".join(lines))
 
 
 def _update_events(world, carla_map, plan, t, ego, lead, vehicles, others, sim, rng, ego_v):

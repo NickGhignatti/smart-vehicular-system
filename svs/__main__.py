@@ -13,7 +13,8 @@ Offline commands (no simulator):
   tune        grid search of fusion / warning parameters on recordings
 
 Any config value can be changed without editing code:
-  --set fusion.sigma_accel_mps2=2.0 --set warning.ttc_on_s=2.2   or   --config-file tuned.json
+  --set fusion.sigma_accel_mps2=2.0 --set warning.ttc_on_s=2.2
+  --config-file calibration.json --config-file best.json   (later files win, --set wins over files)
 """
 
 import argparse
@@ -64,7 +65,8 @@ def build_parser():
     parser.add_argument("--town", help="map to load, e.g. Town04 (overrides CARLA_TOWN)")
     parser.add_argument("--set", action="append", default=[], metavar="SECTION.FIELD=VALUE",
                         help="override a config value, e.g. --set fusion.sigma_accel_mps2=2.0 (repeatable)")
-    parser.add_argument("--config-file", type=Path, help="JSON of config overrides (from calibrate / tune)")
+    parser.add_argument("--config-file", type=Path, action="append", default=[],
+                        help="JSON of config overrides (from calibrate / tune); repeatable, later files win")
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -122,8 +124,8 @@ def build_config(args):
     overrides = {k: v for k, v in (("host", args.host), ("port", args.port), ("town", args.town)) if v is not None}
     if overrides:
         cfg = dataclasses.replace(cfg, carla=dataclasses.replace(cfg.carla, **overrides))
-    if args.config_file:
-        cfg = with_overrides(cfg, load_overrides_file(args.config_file))
+    for path in args.config_file:
+        cfg = with_overrides(cfg, load_overrides_file(path))
     pairs = {}
     for item in args.set:
         key, sep, value = item.partition("=")
