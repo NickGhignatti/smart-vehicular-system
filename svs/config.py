@@ -98,6 +98,9 @@ class RadarPerceptionConfig:
     sigma_range_m: float = 0.15
     sigma_range_per_m: float = 0.005   # extra range sigma per meter of range
     sigma_rate_mps: float = 0.15
+    # Systematic range offset (measured - true), removed from every reading.
+    # TUNE: `python -m svs calibrate` reports it.
+    range_bias_m: float = 0.0
     # Degradation applied on top of the CARLA detections (CARLA's radar has no noise model).
     # Real automotive radars: ~0.1 m / ~0.1 m/s per detection, occasional ghost targets.
     # TUNE: keep these fixed across modes; they define the "realistic radar" of the study.
@@ -148,8 +151,10 @@ class WarningConfig:
     on_frames: int = 3                 # consecutive frames below ttc_on to raise the warning
     min_on_s: float = 1.0              # once raised, keep it at least this long
     min_closing_mps: float = 0.5       # ignore TTC when barely closing in
-    # Evaluation labels: a warning is justified if ground-truth TTC drops below ttc_on + margin
-    # within +-tolerance of the warning event.
+    # Evaluation labels (fixed, NOT tuned: they define what "critical" means). A situation is
+    # critical when ground-truth TTC < label_ttc_s; a warning is justified if ground-truth TTC
+    # drops below label_ttc_s + label_margin_s within +-label_tolerance_s of the warning.
+    label_ttc_s: float = 2.5
     label_margin_s: float = 0.5
     label_tolerance_s: float = 0.5
 

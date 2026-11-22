@@ -8,8 +8,8 @@ Estimate metrics (frames where a lead exists within MAX_RANGE_M):
 
 Warning metrics, event based:
 - a *warning event* is a contiguous run of frames with the warning on;
-- a *critical episode* is a contiguous run of frames with ground-truth TTC < ttc_on;
-- a warning event is justified if ground-truth TTC < ttc_on + label_margin somewhere
+- a *critical episode* is a contiguous run of frames with ground-truth TTC < label_ttc;
+- a warning event is justified if ground-truth TTC < label_ttc + label_margin somewhere
   within [start - tolerance, end + tolerance]; otherwise it is a FALSE warning;
 - a critical episode with no warning overlapping it (+- tolerance) is MISSED;
 - latency = warning start - episode start for detected episodes (negative = early).
@@ -41,8 +41,8 @@ def warning_metrics(active, gt_ttc, t, cfg):
     """cfg: WarningConfig. Returns a dict of counts and rates."""
     duration_min = (t[-1] - t[0] + (t[1] - t[0])) / 60.0 if len(t) > 1 else 0.0
     events = segments(active, t)
-    justified_mask = gt_ttc < cfg.ttc_on_s + cfg.label_margin_s
-    episodes = [e for e in segments(gt_ttc < cfg.ttc_on_s, t) if e[1] - e[0] >= MIN_EPISODE_S]
+    justified_mask = gt_ttc < cfg.label_ttc_s + cfg.label_margin_s
+    episodes = [e for e in segments(gt_ttc < cfg.label_ttc_s, t) if e[1] - e[0] >= MIN_EPISODE_S]
     tol = cfg.label_tolerance_s
 
     false_events = 0

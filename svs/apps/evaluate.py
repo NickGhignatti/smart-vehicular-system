@@ -62,7 +62,7 @@ def run(cfg, paths, out_dir, modes=MODES, plots=True):
             log.info("%-24s %-10s gap RMSE %5.2f m  false %d  missed %d/%d", row["recording"], row["mode"],
                      row["gap_rmse_m"], row["false_warnings"], row["missed"], row["critical_episodes"])
         if plots:
-            plot_run(recording, series, out_dir / f"{path.stem}.png", ttc_on_s=cfg.warning.ttc_on_s)
+            plot_run(recording, series, out_dir / f"{path.stem}.png", ttc_on_s=cfg.warning.ttc_on_s, label_ttc_s=cfg.warning.label_ttc_s)
 
     summary = summarize(rows)
     write_csv(rows, out_dir / "metrics.csv")

@@ -57,7 +57,7 @@ def _shade_events(ax, events, label=False):
             last_label_end = start + 0.11 * span
 
 
-def plot_run(recording, series_by_mode, path, ttc_on_s=2.5, title=None, filtered=("camera", "radar", "fused")):
+def plot_run(recording, series_by_mode, path, ttc_on_s=2.5, label_ttc_s=2.5, title=None, filtered=("camera", "radar", "fused")):
     """Timeline of one recording: gap, closing speed, TTC and the warning of every mode."""
     first = next(iter(series_by_mode.values()))
     t = first["t"]
@@ -113,14 +113,14 @@ def plot_run(recording, series_by_mode, path, ttc_on_s=2.5, title=None, filtered
 
     # (d) warnings, one strip per mode + ground-truth critical periods
     ax = axes[3]
-    rows = modes + ["truth: TTC < on"]
+    rows = modes + [f"truth: TTC < {label_ttc_s:g} s"]
     dt = t[1] - t[0] if len(t) > 1 else 0.05
     for i, name in enumerate(rows):
         if name in series_by_mode:
             active = series_by_mode[name]["warning"]
             color, hatch = COLORS[name], "////" if name.endswith("_raw") else None
         else:
-            active = first["gt_ttc"] < ttc_on_s
+            active = first["gt_ttc"] < label_ttc_s
             color, hatch = CRITICAL, None
         for start in np.where(np.diff(np.concatenate([[0], active.astype(int)])) == 1)[0]:
             end = start

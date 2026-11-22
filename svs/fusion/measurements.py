@@ -39,7 +39,7 @@ def from_radar(m, bumper_offset_m, cfg, sigma_scale=1.0):
     sigma_gap = (cfg.sigma_range_m + cfg.sigma_range_per_m * m.range_m) * sigma_scale
     return GapMeasurement(
         "radar",
-        gap_m=m.range_m - bumper_offset_m,
+        gap_m=m.range_m - bumper_offset_m - cfg.range_bias_m,
         sigma_gap_m=sigma_gap,
         lateral_m=m.lateral_m,
         rate_mps=m.range_rate_mps,
