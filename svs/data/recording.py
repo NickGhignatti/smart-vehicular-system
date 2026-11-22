@@ -42,6 +42,9 @@ class RecordingMeta:
     # Time windows [t_start, t_end, kind] of scripted events (occlusion, cut-in, ...),
     # used to annotate plots and to split metrics.
     events: list = field(default_factory=list)
+    # True when camera occlusion events must be applied at replay (CARLA runs); synthetic
+    # recordings already render them into the boxes.
+    replay_events: bool = False
     notes: str = ""
     format_version: int = FORMAT_VERSION
 

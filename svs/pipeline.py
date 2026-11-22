@@ -24,6 +24,7 @@ from svs.fusion.tracker import TrackEstimate, make_estimator
 from svs.perception.camera_geometry import PinholeCamera
 from svs.perception.camera_tracker import CameraMeasurement, FrontCameraTracker
 from svs.perception.detector import ReplayDetector
+from svs.perception.occlusion import apply_camera_events
 from svs.perception.radar import RadarMeasurement, extract_radar_measurements
 from svs.perception.radar_noise import RadarDegrader
 
@@ -70,7 +71,10 @@ class Pipeline:
         dt = self.meta.dt if dt is None else dt
         cfg = self.cfg
 
-        camera = self.camera_tracker.update(frame.frame, frame.timestamp, {"detections": frame.detections})
+        detections = frame.detections
+        if self.meta.replay_events:
+            detections = apply_camera_events(detections, self.meta.events, frame.timestamp, self.camera_model.width)
+        camera = self.camera_tracker.update(frame.frame, frame.timestamp, {"detections": detections})
         points = self.radar_degrader.apply(frame.radar_points, frame.ego_speed_mps, dt)
         radar = extract_radar_measurements(points) if len(points) else None
 

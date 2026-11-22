@@ -54,3 +54,18 @@ def lead_truth(ego, lead):
         lead_speed_mps=speed_mps(lead),
         ttc_s=time_to_collision(gap, range_rate),
     )
+
+
+def nearest_lead_truth(ego, vehicles, lane_half_width_m=1.5, min_gap_m=-1.0):
+    """Truth for the nearest vehicle ahead in the ego lane, among `vehicles` (None if none).
+
+    With several vehicles around (overtaking car, cut-in), "the lead" is whichever is
+    closest ahead within the lane at that moment.
+    """
+    best = None
+    for vehicle in vehicles:
+        truth = lead_truth(ego, vehicle)
+        if abs(truth.lateral_m) <= lane_half_width_m and truth.gap_m >= min_gap_m:
+            if best is None or truth.gap_m < best.gap_m:
+                best = truth
+    return best
