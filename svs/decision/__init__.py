@@ -1,1 +1,1 @@
-"""TTC computation and the stable (hysteresis + persistence) warning logic (to be implemented)."""
+"""Time-to-collision, time headway and the stable forward-collision warning."""

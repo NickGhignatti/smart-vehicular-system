@@ -56,16 +56,19 @@ def lead_truth(ego, lead):
     )
 
 
-def nearest_lead_truth(ego, vehicles, lane_half_width_m=1.5, min_gap_m=-1.0):
+def nearest_lead_truth(ego, vehicles, lane_half_width_m=1.5, min_gap_m=-1.0, in_lane=None):
     """Truth for the nearest vehicle ahead in the ego lane, among `vehicles` (None if none).
 
     With several vehicles around (overtaking car, cut-in), "the lead" is whichever is
-    closest ahead within the lane at that moment.
+    closest ahead within the lane at that moment. A vehicle is in the lane when its lateral
+    offset is small, or when in_lane(vehicle) says so (map lookup: on a curve a lead in our
+    lane can be meters off the ego heading axis).
     """
     best = None
     for vehicle in vehicles:
         truth = lead_truth(ego, vehicle)
-        if abs(truth.lateral_m) <= lane_half_width_m and truth.gap_m >= min_gap_m:
+        same_lane = abs(truth.lateral_m) <= lane_half_width_m or (in_lane is not None and in_lane(vehicle))
+        if same_lane and truth.gap_m >= min_gap_m:
             if best is None or truth.gap_m < best.gap_m:
                 best = truth
     return best

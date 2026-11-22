@@ -7,7 +7,7 @@ import carla
 import pytest
 
 from svs.apps.common import bumper_offset
-from svs.sim.ground_truth import lead_truth, time_to_collision
+from svs.sim.ground_truth import lead_truth, nearest_lead_truth, time_to_collision
 from svs.sim.sensors import SensorSync, radar_to_array
 
 
@@ -76,3 +76,29 @@ def test_lead_truth_gap_rate_and_ttc():
 
 def test_bumper_offset():
     assert bumper_offset(fake_vehicle(0.0, 0.0, half_length=2.4), sensor_x=1.8) == pytest.approx(0.6)
+
+
+def fake_vehicle_at(x, y, speed=0.0):
+    return NS(
+        get_transform=lambda: carla.Transform(carla.Location(x=x, y=y), carla.Rotation(yaw=0.0)),
+        get_location=lambda: carla.Location(x=x, y=y),
+        get_velocity=lambda: carla.Vector3D(x=speed),
+        bounding_box=NS(location=carla.Location(), extent=carla.Vector3D(x=2.0)),
+    )
+
+
+def test_nearest_lead_truth_picks_closest_in_lane():
+    ego = fake_vehicle_at(0.0, 0.0)
+    far, near_adjacent, near = fake_vehicle_at(40.0, 0.2), fake_vehicle_at(15.0, 3.5), fake_vehicle_at(25.0, -0.3)
+    truth = nearest_lead_truth(ego, [far, near_adjacent, near])
+    assert truth.gap_m == pytest.approx(25.0 - 4.0)
+    assert nearest_lead_truth(ego, [near_adjacent]) is None
+    behind = fake_vehicle_at(-20.0, 0.0)
+    assert nearest_lead_truth(ego, [behind]) is None
+
+
+def test_nearest_lead_truth_map_lane_check_for_curves():
+    ego = fake_vehicle_at(0.0, 0.0)
+    on_curve = fake_vehicle_at(40.0, 4.0)        # same lane, but 4 m off the ego heading axis
+    assert nearest_lead_truth(ego, [on_curve]) is None
+    assert nearest_lead_truth(ego, [on_curve], in_lane=lambda v: True).gap_m == pytest.approx(36.0)

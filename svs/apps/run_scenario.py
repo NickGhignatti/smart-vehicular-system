@@ -137,7 +137,13 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
                 data = sync.get(frame)
                 t = step * dt
                 ego_v = speed_mps(ego)
-                truth = nearest_lead_truth(ego, vehicles)
+                ego_wp = driving_waypoint(carla_map, ego.get_location())
+
+                def in_ego_lane(vehicle, ego_wp=ego_wp):
+                    wp = driving_waypoint(carla_map, vehicle.get_location())
+                    return wp is not None and ego_wp is not None and (wp.road_id, wp.lane_id) == (ego_wp.road_id, ego_wp.lane_id)
+
+                truth = nearest_lead_truth(ego, vehicles, in_lane=in_ego_lane)
 
                 # --- perception input ---
                 if data.get("instance") is not None:
