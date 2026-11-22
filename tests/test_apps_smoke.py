@@ -67,3 +67,20 @@ def test_evaluate_and_calibrate_on_fake_recording(cfg):
     fused = next(r for r in summary if r["mode"] == "fused")
     assert fused["availability"] > 0.8 and fused["gap_rmse_m"] < 1.5
     assert (cfg.output_dir / "report" / "summary.md").exists()
+
+
+def test_offline_cli_end_to_end(tmp_path):
+    """synth -> calibrate -> tune -> evaluate --config-file, through the real entrypoint."""
+    from svs.__main__ import main
+    rec_dir = tmp_path / "recs"
+    assert main(["synth", "--scenarios", "approach", "stop_and_go", "--seeds", "1", "--seconds", "25",
+                 "--out", str(rec_dir)]) == 0
+    assert main(["calibrate", str(rec_dir / "synth_approach_1.npz"), "--out", str(tmp_path / "cal")]) == 0
+    assert main(["--set", "warning.on_frames=2", "tune", str(rec_dir / "synth_stop_and_go_1.npz"),
+                 "--quick", "--out", str(tmp_path / "tune")]) == 0
+    assert main(["--config-file", str(tmp_path / "cal" / "calibration.json"), "evaluate", str(rec_dir),
+                 "--no-plots", "--out", str(tmp_path / "report")]) == 0
+    summary = (tmp_path / "report" / "summary.md").read_text()
+    assert "fused" in summary and "SYNTHETIC" in summary
+    with pytest.raises(SystemExit):
+        main(["evaluate", str(tmp_path / "nothing_here*.npz")])
