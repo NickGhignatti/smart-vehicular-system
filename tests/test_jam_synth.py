@@ -1,6 +1,7 @@
 """Jam scenarios in the synthetic world: the column is rendered and its waves reach the ego."""
 
 import numpy as np
+import pytest
 
 from svs.config import load_config
 from svs.scenarios import PHANTOM_CRUISE_MPS, make_scenario
@@ -32,6 +33,14 @@ def test_phantom_brake_reaches_the_car_in_front_of_the_ego():
     assert rec.frames[0].truth.ego_speed_mps > 0.9 * PHANTOM_CRUISE_MPS             # starts in motion
     after = [f.truth.lead_speed_mps for f in rec.frames[int(event.t_start / DT):] if f.truth]
     assert min(after) < 0.9 * PHANTOM_CRUISE_MPS
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_phantom_jam_puts_the_ego_in_a_critical_situation(seed):
+    rec = generate("phantom_jam", seed, CFG, 60.0)
+    ttc = np.array([f.truth.ttc_s if f.truth else np.inf for f in rec.frames])
+    assert (ttc < CFG.warning.label_ttc_s).sum() * DT >= 0.4        # otherwise the scenario cannot test any warning
+    assert min(f.truth.gap_m for f in rec.frames if f.truth) > 0.0  # ...but it must stay a near miss, not an overlap
 
 
 def test_neighbors_in_the_adjacent_lane_are_seen_by_the_camera():

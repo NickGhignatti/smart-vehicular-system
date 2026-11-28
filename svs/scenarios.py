@@ -36,7 +36,8 @@ SCENARIOS = ("approach", "stop_and_go", "occlusion", "cut_in",
              "jam_queue", "jam_neighbors", "jam_cut_in", "phantom_jam")
 JAM_CARS = 6                    # cars ahead of the ego in a jam scenario, leader included
 PHANTOM_CRUISE_MPS = 6.0
-PHANTOM_DECEL_MPS2 = 3.0
+PHANTOM_DECEL_MPS2 = 4.0                # with PHANTOM_BRAKE_S the car comes to a full stop: a milder brake
+PHANTOM_BRAKE_S = 3.0                   # never gets the ego below the label TTC (checked on seeds 1-3)
 NEIGHBOR_SPEED_FACTOR = 0.85            # jam_neighbors: the adjacent lane crawls a bit slower than the column
 NEIGHBOR_OFFSETS_M = (-12.0, 6.0, 24.0)  # along the lane, relative to the ego start
 
@@ -152,7 +153,7 @@ def make_scenario(name, seed, duration_s=90.0, dt=0.05):
         plan.events.append(Event(t0, t0 + 3.0, "cut_in"))
     elif name == "phantom_jam":
         t0 = float(rng.uniform(15.0, 30.0))
-        plan.events.append(Event(t0, t0 + 1.5, "phantom_brake", value=float(JAM_CARS // 2)))
+        plan.events.append(Event(t0, t0 + PHANTOM_BRAKE_S, "phantom_brake", value=float(JAM_CARS // 2)))
     plan.events.sort(key=lambda e: e.t_start)
     return plan
 
