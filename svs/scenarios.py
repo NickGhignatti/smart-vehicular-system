@@ -1,3 +1,4 @@
+
 """Scenario definitions shared by the synthetic world and the CARLA runner (no CARLA here).
 
 A scenario fixes, for a given seed:
@@ -13,14 +14,29 @@ Scenarios:
     stop_and_go  lead cycles 0 -> ~30 km/h -> 0, ego follows (main study)
     occlusion    stop_and_go + camera occlusions and an adjacent car passing by
     cut_in       stop_and_go + a car cutting in between ego and lead
+
+Jam scenarios: a column of JAM_CARS cars ahead of the ego (plan.n_ahead). Only the leader (car 0)
+follows plan.lead_speed; every other car follows the one in front with its own IDM driver
+(follower_driver), so the stop-and-go waves come from the model, not from a script. The cars all
+start at plan.ego_initial_speed_mps, spaced by plan.initial_gap_m (bumper to bumper).
+    jam_queue      leader stop-and-go, tight column
+    jam_neighbors  jam_queue + plan.neighbor_cars cars moving in the adjacent lane
+    jam_cut_in     jam_queue + a car cutting in between ego and the last column car
+    phantom_jam    leader at constant speed, one mid-column car brakes without reason
+                   (event "phantom_brake", value = its index): the wave goes backwards to the ego
 """
 
+import dataclasses
 import math
 from dataclasses import dataclass, field
 
 import numpy as np
 
-SCENARIOS = ("approach", "stop_and_go", "occlusion", "cut_in")
+SCENARIOS = ("approach", "stop_and_go", "occlusion", "cut_in",
+             "jam_queue", "jam_neighbors", "jam_cut_in", "phantom_jam")
+JAM_CARS = 6                    # cars ahead of the ego in a jam scenario, leader included
+PHANTOM_CRUISE_MPS = 6.0
+PHANTOM_DECEL_MPS2 = 3.0
 
 
 @dataclass(frozen=True)
@@ -47,6 +63,8 @@ class ScenarioPlan:
     initial_gap_m: float
     ego_initial_speed_mps: float
     events: list = field(default_factory=list)
+    n_ahead: int = 1                  # cars ahead of the ego in the same lane (1 = just the lead)
+    neighbor_cars: int = 0            # cars driving in the adjacent lane
 
     def events_of(self, kind):
         return [e for e in self.events if e.kind == kind]
@@ -109,9 +127,15 @@ def make_scenario(name, seed, duration_s=90.0, dt=0.05):
         return ScenarioPlan(name, seed, duration_s, dt, np.zeros(n), initial_gap_m=50.0,
                             ego_initial_speed_mps=0.0)
 
-    plan = ScenarioPlan(name, seed, duration_s, dt, _stop_and_go_profile(n, dt, rng),
-                        initial_gap_m=float(rng.uniform(10.0, 15.0)), ego_initial_speed_mps=0.0,
-                        events=_distractions(duration_s, rng))
+    jam = name in SCENARIOS[4:]
+    if name == "phantom_jam":
+        profile, gap, v0 = np.full(n, PHANTOM_CRUISE_MPS), 12.0, PHANTOM_CRUISE_MPS   # ~ IDM equilibrium gap
+    else:
+        profile = _stop_and_go_profile(n, dt, rng)
+        gap, v0 = float(rng.uniform(4.0, 7.0) if jam else rng.uniform(10.0, 15.0)), 0.0
+    plan = ScenarioPlan(name, seed, duration_s, dt, profile, initial_gap_m=gap, ego_initial_speed_mps=v0,
+                        events=_distractions(duration_s, rng), n_ahead=JAM_CARS if jam else 1,
+                        neighbor_cars=3 if name == "jam_neighbors" else 0)
     if name == "occlusion":
         t = 6.0
         while t < duration_s - 6.0:
@@ -120,9 +144,12 @@ def make_scenario(name, seed, duration_s=90.0, dt=0.05):
             length = rng.uniform(0.8, 2.0)
             plan.events.append(Event(t, t + length, kind, value=float(rng.uniform(0.3, 0.6))))
         plan.events.append(Event(15.0, 25.0, "overtake"))
-    elif name == "cut_in":
+    elif name in ("cut_in", "jam_cut_in"):
         t0 = float(rng.uniform(25.0, 40.0))
         plan.events.append(Event(t0, t0 + 3.0, "cut_in"))
+    elif name == "phantom_jam":
+        t0 = float(rng.uniform(15.0, 30.0))
+        plan.events.append(Event(t0, t0 + 1.5, "phantom_brake", value=float(JAM_CARS // 2)))
     plan.events.sort(key=lambda e: e.t_start)
     return plan
 
@@ -146,9 +173,10 @@ class DriverParams:
 class DriverModel:
     """IDM driver; during "distraction" events it keeps its speed until the TTC gets very small."""
 
-    def __init__(self, plan, params=None):
+    def __init__(self, plan, params=None, car_index=None):
         self.plan = plan
         self.p = params or DriverParams()
+        self.car_index = car_index      # position in the jam column; None for the ego and loose cars
         self._delay = max(1, int(round(self.p.reaction_s / plan.dt)))
         self._seen = []
 
@@ -159,6 +187,9 @@ class DriverModel:
         self._seen.append((gap, lead_speed))
         gap, lead_speed = self._seen[-self._delay] if len(self._seen) >= self._delay else self._seen[0]
 
+        if self.car_index is not None and any(
+                e.active(t) and int(e.value) == self.car_index for e in self.plan.events_of("phantom_brake")):
+            return -PHANTOM_DECEL_MPS2
         free = p.max_accel * (1.0 - (ego_speed / p.desired_speed) ** 4)
         if gap is None:
             return free
@@ -170,6 +201,19 @@ class DriverModel:
         s_star = p.min_gap + max(0.0, ego_speed * p.time_gap + ego_speed * dv / (2 * math.sqrt(p.max_accel * p.comfort_decel)))
         a = p.max_accel * (1.0 - (ego_speed / p.desired_speed) ** 4 - (s_star / max(gap, 0.5)) ** 2)
         return float(np.clip(a, -p.max_decel, p.max_accel))
+
+
+def follower_params(plan, i):
+    """IDM parameters of jam car i (1 = right behind the leader): seeded, a bit different per car."""
+    r = np.random.default_rng([plan.seed, i])
+    return DriverParams(time_gap=float(r.uniform(1.0, 1.6)), min_gap=float(r.uniform(2.0, 3.0)),
+                        reaction_s=float(r.uniform(0.3, 0.7)))
+
+
+def follower_driver(plan, i):
+    """Driver of jam car i: never distracted, only reacts to its own phantom brake."""
+    own = [e for e in plan.events if e.kind == "phantom_brake"]
+    return DriverModel(dataclasses.replace(plan, events=own), follower_params(plan, i), car_index=i)
 
 
 def approach_accel(gap_m, ego_speed_mps, cruise_mps=15 / 3.6, stop_gap_m=5.0, max_decel=2.5):
