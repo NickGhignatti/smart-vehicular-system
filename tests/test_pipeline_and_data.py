@@ -85,7 +85,7 @@ def test_radar_degrader_noise_dropout_and_ghosts():
     assert len(out) > len(pts)
     assert deg._ghost[0] == pytest.approx(first - 8.0 * 0.05)  # stationary: approaches at ego speed
     ghost = out[len(pts):]
-    assert np.all(ghost[:, 3] > 7.0)                            # CARLA sign: moving towards the sensor
+    assert np.all(ghost[:, 3] < -7.0)                           # CARLA sign: negative when closing in
 
 
 def test_radar_ghost_hijacks_nearest_cluster():

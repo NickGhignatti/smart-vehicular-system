@@ -127,10 +127,10 @@ class ExtractRadarMeasurementsTest(unittest.TestCase):
         result = extract_radar_measurements(points, percentile=50)
         self.assertAlmostEqual(result.range_m, 10.0 * np.cos(np.radians(5.0)), places=6)
 
-    def test_range_rate_sign_is_flipped(self):
-        # CARLA velocity is positive towards the sensor; range_rate is negative when closing in.
-        closing = extract_radar_measurements(make_points(*self.lead_points(velocity=4.2)))
-        opening = extract_radar_measurements(make_points(*self.lead_points(velocity=-2.0)))
+    def test_range_rate_has_carla_velocity_sign(self):
+        # CARLA velocity is negative when closing in, like range_rate: passed through unchanged.
+        closing = extract_radar_measurements(make_points(*self.lead_points(velocity=-4.2)))
+        opening = extract_radar_measurements(make_points(*self.lead_points(velocity=2.0)))
         self.assertAlmostEqual(closing.range_rate_mps, -4.2, places=6)
         self.assertAlmostEqual(opening.range_rate_mps, 2.0, places=6)
 
@@ -141,12 +141,12 @@ class ExtractRadarMeasurementsTest(unittest.TestCase):
     def test_range_rate_corrects_projection_on_axis(self):
         # Lead closing in at 4.2 m/s along the road, seen at different angles inside the corridor:
         # the radial velocity is 4.2 * cos(angle), the corrected longitudinal one must be 4.2.
-        rows = [(25.0, az, 0.0, 4.2 * np.cos(np.radians(az))) for az in (-3.0, 0.0, 2.0, 3.0)]
+        rows = [(25.0, az, 0.0, -4.2 * np.cos(np.radians(az))) for az in (-3.0, 0.0, 2.0, 3.0)]
         result = extract_radar_measurements(make_points(*rows))
         self.assertAlmostEqual(result.range_rate_mps, -4.2, places=6)
 
     def test_range_rate_is_robust_to_a_spurious_velocity(self):
-        rows = self.lead_points(velocity=4.2) + [(24.0, 0.0, 0.0, 40.0)]
+        rows = self.lead_points(velocity=-4.2) + [(24.0, 0.0, 0.0, -40.0)]
         result = extract_radar_measurements(make_points(*rows))
         self.assertAlmostEqual(result.range_rate_mps, -4.2, places=6)
 

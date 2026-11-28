@@ -85,7 +85,7 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
         world.set_weather(_weather(weather))
 
         ego, lead, start_wp = spawn_ego_and_lead(world, random.Random(seed), gap_m=plan.initial_gap_m + 4.5,
-                                                 straight_len_m=200.0)
+                                                 straight_len_m=150.0)
         sim.track(ego)
         sim.track(lead)
         vehicles = [lead]

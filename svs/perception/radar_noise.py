@@ -5,8 +5,8 @@ radars are noisier, lose frames, and report false targets. Without this, "radar-
 be a perfect sensor and the fusion study would be meaningless. All effects are seeded and
 configured in RadarPerceptionConfig, and applied identically in live runs and replays.
 
-Velocity sign: points use CARLA's convention (positive = moving towards the sensor), the
-same one svs.perception.radar.extract_radar_measurements assumes.
+Velocity sign: points use CARLA's convention (negative = moving towards the sensor, the range
+rate), the same one svs.perception.radar.extract_radar_measurements assumes.
 """
 
 import numpy as np
@@ -60,8 +60,8 @@ class RadarDegrader:
         depth = np.sqrt(xs ** 2 + ys ** 2 + zs ** 2)
         azimuth = np.arctan2(ys, xs)
         altitude = np.arcsin(zs / depth)
-        # Stationary object: radial speed towards the sensor = ego speed projected on the ray.
-        velocity = ego_speed_mps * np.cos(azimuth) * np.cos(altitude)
+        # Stationary object: radial speed is minus the ego speed projected on the ray (closing in).
+        velocity = -ego_speed_mps * np.cos(azimuth) * np.cos(altitude)
         velocity += self.rng.normal(0, self.cfg.point_velocity_noise_mps, n)
         ghost = np.empty((n, 4))
         ghost[:, DEPTH], ghost[:, AZIMUTH], ghost[:, ALTITUDE], ghost[:, VELOCITY] = depth, azimuth, altitude, velocity

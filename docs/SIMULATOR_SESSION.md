@@ -46,8 +46,9 @@ python -m svs sensors --seconds 30
 A window shows the camera with ground truth (GT) and radar lines. Look for:
 - `Missing messages ... camera=0 radar=0` at the end (a few are OK on a remote server);
 - while the ego approaches the parked car, **GT rate is negative and RADAR vel is negative too**.
-  If the radar rate is positive while closing in, the CARLA velocity sign is the opposite of what
-  `svs/perception/radar.py` assumes: flip the sign of `range_rate_mps` there (one line) and re-run.
+  (Verified on CARLA 0.9.16: the radar velocity is negative when closing in, same as the GT rate,
+  and `svs/perception/radar.py` passes it through unchanged. If a different version disagrees,
+  negate `range_rate_mps` there.)
 - RADAR rng within ~0.5 m of GT gap (it is measured from the radar, the GT is bumper to bumper).
 
 Optional: `python -m svs sensors --lateral 1.0` (lead shifted 1 m right): RADAR lat ~ +1.

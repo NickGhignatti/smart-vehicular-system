@@ -12,7 +12,7 @@ Rendering:
   subtraction), as the instance-segmentation camera does.
 - radar: points on the rear face of every vehicle, as many as the radar rays hitting it
   (points_per_second / FPS spread over the FOV), plus road and guardrail clutter. Velocity
-  follows CARLA's convention (positive = towards the sensor).
+  follows CARLA's convention (negative = towards the sensor, i.e. the range rate).
 """
 
 import math
@@ -134,8 +134,8 @@ def _polar(xs, ys, zs, relative_speed):
     depth = np.sqrt(xs ** 2 + ys ** 2 + zs ** 2)
     azimuth = np.arctan2(ys, xs)
     altitude = np.arcsin(zs / depth)
-    # CARLA: velocity > 0 when the target moves towards the sensor.
-    velocity = -relative_speed * np.cos(azimuth) * np.cos(altitude)
+    # CARLA: velocity < 0 when the target moves towards the sensor (it is the range rate).
+    velocity = relative_speed * np.cos(azimuth) * np.cos(altitude)
     return np.column_stack([depth, azimuth, altitude, velocity])
 
 

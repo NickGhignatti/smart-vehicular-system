@@ -207,7 +207,7 @@ class FakeSensor(FakeActor):
                 y, z = car.y - me.y + dy, -0.3
                 depth = math.sqrt(x * x + y * y + z * z)
                 az, alt = math.atan2(y, x), math.asin(z / depth)
-                vel = -(car.v - self.parent.v) * math.cos(az) * math.cos(alt)   # CARLA: + towards sensor
+                vel = (car.v - self.parent.v) * math.cos(az) * math.cos(alt)    # CARLA: - towards sensor
                 out.append(NS(depth=depth, azimuth=az, altitude=alt, velocity=vel))
         return out
 
