@@ -1,0 +1,4 @@
+# Optional: real camera detector (python -m svs camera --detector yolo).
+# CPU build of torch is pulled in automatically; for the GPU build see https://pytorch.org.
+-r requirements.txt
+ultralytics

@@ -1,7 +1,6 @@
 """Front camera and radar: spawning, raw-data conversion and frame-synchronized reads."""
 
 import logging
-import math
 import queue
 
 import carla
@@ -21,8 +20,10 @@ def _set_attributes(bp, **attributes):
             log.warning("Blueprint %s has no attribute %s", bp.id, key)
 
 
-def spawn_camera(world, parent, cfg, role_name="svs_front_camera"):
-    bp = world.get_blueprint_library().find("sensor.camera.rgb")
+def spawn_camera(world, parent, cfg, role_name="svs_front_camera", blueprint="sensor.camera.rgb"):
+    """Front camera (Lab4 spawn_camera). Pass blueprint="sensor.camera.instance_segmentation"
+    with the same cfg to get a second camera aligned pixel-for-pixel with the RGB one."""
+    bp = world.get_blueprint_library().find(blueprint)
     _set_attributes(bp, image_size_x=cfg.width, image_size_y=cfg.height, fov=cfg.fov,
                     sensor_tick=cfg.sensor_tick, role_name=role_name)
     transform = carla.Transform(carla.Location(x=cfg.x, z=cfg.z), carla.Rotation(pitch=cfg.pitch))
@@ -38,20 +39,14 @@ def spawn_radar(world, parent, cfg, role_name="svs_front_radar"):
     return world.spawn_actor(bp, transform, attach_to=parent)
 
 
-def camera_intrinsics(cfg):
-    """Pinhole matrix K from image size and horizontal FOV (CARLA cameras have square pixels)."""
-    focal = cfg.width / (2.0 * math.tan(math.radians(cfg.fov) / 2.0))
-    return np.array([
-        [focal, 0.0, cfg.width / 2.0],
-        [0.0, focal, cfg.height / 2.0],
-        [0.0, 0.0, 1.0],
-    ])
+def image_to_bgra(image):
+    """carla.Image -> HxWx4 uint8 BGRA array (raw layout; the instance camera needs all 4 channels)."""
+    return np.frombuffer(image.raw_data, dtype=np.uint8).reshape((image.height, image.width, 4))
 
 
 def image_to_bgr(image):
-    """carla.Image (BGRA bytes) -> HxWx3 uint8 BGR array for OpenCV."""
-    arr = np.frombuffer(image.raw_data, dtype=np.uint8).reshape((image.height, image.width, 4))
-    return arr[:, :, :3].copy()
+    """carla.Image (BGRA bytes) -> HxWx3 uint8 BGR array for OpenCV (Lab4)."""
+    return image_to_bgra(image)[:, :, :3].copy()
 
 
 def radar_to_array(measurement):

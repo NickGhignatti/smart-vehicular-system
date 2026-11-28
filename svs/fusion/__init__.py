@@ -1,1 +1,1 @@
-"""Camera/radar association and the constant-velocity Kalman filter + track manager (to be implemented)."""
+"""Camera/radar measurements in one frame, constant-velocity Kalman filter, lead track management."""

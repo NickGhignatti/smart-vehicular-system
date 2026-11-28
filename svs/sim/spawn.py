@@ -9,6 +9,8 @@ import math
 
 import carla
 
+from svs.sim.traffic import spawn_in_lane
+
 log = logging.getLogger(__name__)
 
 
@@ -126,6 +128,32 @@ def spawn_ego_and_lead(world, rng, gap_m=25.0, straight_len_m=250.0, lateral_off
         return ego, lead, start_wp
 
     raise RuntimeError("Could not spawn ego and lead on the same straight lane")
+
+
+def spawn_column(world, rng, n_ahead, gap_m, straight_len_m=150.0, speed_mps=0.0):
+    """Ego plus a column of n_ahead cars in its lane, gap_m apart (center to center), all at speed_mps.
+
+    Returns (ego, column, start_waypoint): column[0] is the leader (front), column[-1] is right
+    ahead of the ego. The caller registers the actors for cleanup. On failure nothing is left alive.
+    """
+    ego, lead, start_wp = spawn_ego_and_lead(world, rng, gap_m=gap_m, straight_len_m=straight_len_m)
+    column = [lead]
+    for k in range(2, n_ahead + 1):
+        bp = pick_vehicle_bp(world, f"svs_column_{k}", ("vehicle.audi.a2", "vehicle.nissan.micra"), rng)
+        car = spawn_in_lane(world, bp, start_wp, gap_m * k, speed_mps=speed_mps)
+        if car is None:
+            # shortcut: one attempt on the first straight found, no retry elsewhere; upgrade if spawns fail in practice
+            for actor in (ego, *column):
+                actor.destroy()
+            raise RuntimeError(f"Could not spawn car {k} of the column ({gap_m * k:.0f} m ahead of the ego)")
+        column.insert(0, car)
+    if speed_mps > 0:
+        fwd = start_wp.transform.get_forward_vector()
+        for car in (ego, lead):
+            car.set_target_velocity(carla.Vector3D(fwd.x * speed_mps, fwd.y * speed_mps, 0.0))
+            car.apply_control(carla.VehicleControl())      # release the brakes spawn_ego_and_lead applied
+    log.info("Spawned ego and a column of %d cars, gap %.1f m", n_ahead, gap_m)
+    return ego, column, start_wp
 
 
 def follow_spectator(spectator, transform, distance=12.0, z=4.5, pitch=-15.0):

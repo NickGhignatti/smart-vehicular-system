@@ -25,7 +25,7 @@ class RadarMeasurement:
         range_m: distance along x to the nearest return. Not the ray length: a lead at 5 deg
             off-axis is cos(5 deg) closer along x than along the ray.
         range_rate_mps: change of range_m over time. Negative = closing in, positive = opening.
-            The sign is the opposite of CARLA's radar velocity (positive towards the sensor).
+            Same sign as CARLA's radar velocity (verified on 0.9.16: negative when closing in).
         lateral_m: y of the lead, positive to the right of the radar axis. Radar angular
             resolution is coarse and the returns are not the vehicle centre, so expect it noisy.
         n_points: detections used for the reading. More points, more trust.
@@ -80,7 +80,7 @@ def extract_radar_measurements(points, percentile=DEFAULT_PERCENTILE) -> RadarMe
 
     return RadarMeasurement(
         range_m=float(np.percentile(front_xyz[:, 0], percentile)),
-        range_rate_mps=float(-np.median(longitudinal_velocity)),
+        range_rate_mps=float(np.median(longitudinal_velocity)),
         lateral_m=float(np.median(front_xyz[:, 1])),
         n_points=len(front_points),
     )
