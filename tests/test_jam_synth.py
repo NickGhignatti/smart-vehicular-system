@@ -5,7 +5,7 @@ import pytest
 
 from svs.config import load_config
 from svs.scenarios import PHANTOM_CRUISE_MPS, make_scenario
-from svs.synth import Vehicle, _render_radar, generate
+from svs.synth import Vehicle, _render_radar, cut_in_possible, generate
 
 CFG = load_config()
 DT = CFG.carla.fixed_delta_seconds
@@ -56,6 +56,19 @@ def test_cut_in_in_a_jam_puts_a_nearer_car_in_front_of_the_ego():
     before, after = int(event.t_start / DT) - 1, int(event.t_end / DT) + 10
     assert gaps[after] < gaps[before]
     assert np.nanmin(gaps) > 0.3
+
+
+def test_cut_in_needs_room_and_an_ego_that_does_not_run_into_the_car():
+    assert cut_in_possible(12.0, 6.0, 6.0, 1.7)         # 3.75 m free on each side, same speeds
+    assert not cut_in_possible(5.0, 6.0, 6.0, 1.7)      # the car does not fit in the gap
+    assert not cut_in_possible(9.0, 4.0, 8.0, 1.7)      # it fits, but the ego closes in at 4 m/s before the car is in the lane
+
+
+@pytest.mark.parametrize("name", ["cut_in", "jam_cut_in"])
+@pytest.mark.parametrize("seed", [1, 2, 3, 11, 12, 13])
+def test_cut_in_never_overlaps_the_ego(name, seed):
+    rec = generate(name, seed, CFG, 90.0)
+    assert min(f.truth.gap_m for f in rec.frames if f.truth) > 0.0
 
 
 def test_frames_are_numbered_consecutively_in_a_column():

@@ -33,6 +33,18 @@ BUMPER_HEIGHT = 0.3         # lowest point of the rear face above the road
 EGO_HALF_LENGTH = 2.4       # ego origin -> front bumper
 LANE_WIDTH = 3.5
 IN_LANE = 1.5               # |lateral| below this = in our lane
+CUT_IN_CLEARANCE_M = 1.0    # free space the cutter needs in front of and behind it
+
+
+def cut_in_possible(gap_m, cutter_speed, ego_speed, lane_entry_s):
+    """Whether a car can cut in: it fits in the gap, and the ego does not reach it before it is in the lane.
+
+    gap_m is the ego-front to lead-rear gap, the cutter sits in the middle of it. The speeds are
+    assumed constant until the cutter enters the lane (lane_entry_s later). The CARLA runner gets the
+    same result from the spawn collision check: with no room the event is skipped.
+    """
+    room = (gap_m - CAR_LENGTH) / 2
+    return room >= CUT_IN_CLEARANCE_M and room + (cutter_speed - ego_speed) * lane_entry_s >= CUT_IN_CLEARANCE_M
 
 
 class Vehicle:
@@ -195,12 +207,17 @@ def generate(name, seed, cfg, duration_s=90.0):
             car = next((v for v in vehicles if v.role.startswith("cut_in")), None)
             if car is None:
                 gap = lead.x - (ego_x + EGO_HALF_LENGTH)
-                car = Vehicle(ego_x + EGO_HALF_LENGTH + 0.5 * gap, LANE_WIDTH, lead.speed, "cut_in")
-                vehicles.append(car)
-            progress = (t - cut_in.t_start) / (cut_in.t_end - cut_in.t_start)
-            car.lateral = LANE_WIDTH * (1.0 - progress)
-            if plan.n_ahead == 1:
-                lead.lateral = -LANE_WIDTH * progress       # the old lead changes lane (in a jam it stays ahead)
+                entry_s = (1.0 - IN_LANE / LANE_WIDTH) * (cut_in.t_end - cut_in.t_start)
+                if cut_in_possible(gap, lead.speed, ego_speed, entry_s):
+                    car = Vehicle(ego_x + EGO_HALF_LENGTH + 0.5 * (gap - CAR_LENGTH), LANE_WIDTH, lead.speed, "cut_in")
+                    vehicles.append(car)
+                else:
+                    cut_in = None                           # no room: nobody cuts in
+            if car is not None:
+                progress = (t - cut_in.t_start) / (cut_in.t_end - cut_in.t_start)
+                car.lateral = LANE_WIDTH * (1.0 - progress)
+                if plan.n_ahead == 1:
+                    lead.lateral = -LANE_WIDTH * progress   # the old lead changes lane (in a jam it stays ahead)
         elif cut_in and t >= cut_in.t_end:
             car = next((v for v in vehicles if v.role == "cut_in"), None)
             if car is not None:
