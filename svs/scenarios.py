@@ -37,6 +37,8 @@ SCENARIOS = ("approach", "stop_and_go", "occlusion", "cut_in",
 JAM_CARS = 6                    # cars ahead of the ego in a jam scenario, leader included
 PHANTOM_CRUISE_MPS = 6.0
 PHANTOM_DECEL_MPS2 = 3.0
+NEIGHBOR_SPEED_FACTOR = 0.85            # jam_neighbors: the adjacent lane crawls a bit slower than the column
+NEIGHBOR_OFFSETS_M = (-12.0, 6.0, 24.0)  # along the lane, relative to the ego start
 
 
 @dataclass(frozen=True)

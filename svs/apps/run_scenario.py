@@ -29,7 +29,8 @@ from svs.data.recording import FrameData, Recording, RecordingMeta
 from svs.hud import draw_warning_hud
 from svs.perception.detector import InstanceSegmentationDetector, YoloDetector
 from svs.pipeline import Pipeline
-from svs.scenarios import DriverModel, approach_accel, follower_driver, make_scenario
+from svs.scenarios import (NEIGHBOR_OFFSETS_M, NEIGHBOR_SPEED_FACTOR, DriverModel, approach_accel, follower_driver,
+                            make_scenario)
 from svs.sim.ground_truth import lead_truth, nearest_lead_truth, speed_mps
 from svs.sim.sensors import SensorSync, image_to_bgr, image_to_bgra, radar_to_array, spawn_camera, spawn_radar
 from svs.sim.session import CarlaSession
@@ -39,8 +40,6 @@ from svs.sim.traffic import LaneKeeper, adjacent_lane, driving_waypoint, spawn_i
 log = logging.getLogger(__name__)
 
 SAFETY_GAP_M = 1.0
-NEIGHBOR_SPEED_FACTOR = 0.85            # jam_neighbors: the adjacent lane crawls a bit slower than the column
-NEIGHBOR_OFFSETS_M = (-12.0, 6.0, 24.0)  # along the lane, relative to the ego start
 
 
 class ScriptedVehicle:

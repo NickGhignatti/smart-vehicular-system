@@ -23,7 +23,8 @@ import numpy as np
 from svs.data.recording import FrameData, Recording, RecordingMeta
 from svs.perception.camera_geometry import PinholeCamera
 from svs.perception.detector import Detection
-from svs.scenarios import DriverModel, approach_accel, make_scenario
+from svs.scenarios import (NEIGHBOR_OFFSETS_M, NEIGHBOR_SPEED_FACTOR, DriverModel, approach_accel, follower_driver,
+                            make_scenario)
 from svs.sim.ground_truth import LeadTruth, time_to_collision
 
 CAR_WIDTH, CAR_HEIGHT, CAR_LENGTH = 1.85, 1.5, 4.5
@@ -39,7 +40,7 @@ class Vehicle:
         self.x = x              # rear bumper position along the road (world), m
         self.lateral = lateral
         self.speed = speed
-        self.role = role        # "lead", "overtake", "cut_in"
+        self.role = role        # "lead" (right in front of the ego), "column", "neighbor", "overtake", "cut_in"
 
 
 def _sensor_offsets(cfg):
@@ -98,9 +99,13 @@ def _render_radar(cfg, vehicles, ego_x, ego_speed, radar_offset, rng):
     rc = cfg.radar
     rays = rc.points_per_second / (1.0 / rc.sensor_tick)
     rows = []
-    for v in vehicles:
-        x = v.x - (ego_x + EGO_HALF_LENGTH) + radar_offset
-        if x < 0.5 or x > rc.range:
+    in_range = [(v, v.x - (ego_x + EGO_HALF_LENGTH) + radar_offset) for v in vehicles]
+    in_range = [(v, x) for v, x in in_range if 0.5 <= x <= rc.range]
+    for v, x in in_range:
+        # Rays stop at the first car: one whose centre is inside the angular width of a nearer car is hidden.
+        angle = math.atan2(v.lateral, x)
+        if any(xn < x and abs(angle - math.atan2(n.lateral, xn)) <= math.atan(CAR_WIDTH / 2 / xn)
+               for n, xn in in_range):
             continue
         az_width = math.degrees(2 * math.atan(CAR_WIDTH / 2 / x))
         el_height = math.degrees(math.atan((CAR_HEIGHT - BUMPER_HEIGHT) / x))
@@ -158,17 +163,31 @@ def generate(name, seed, cfg, duration_s=90.0):
     recording = Recording(meta)
 
     ego_x, ego_speed, ego_accel = 0.0, plan.ego_initial_speed_mps, 0.0
-    lead = Vehicle(ego_x + EGO_HALF_LENGTH + plan.initial_gap_m, 0.0, float(plan.lead_speed[0]), "lead")
-    vehicles = [lead]
+    # The column, front to back: column[0] follows the plan's profile, every other car its own IDM behind the one ahead.
+    first = ego_x + EGO_HALF_LENGTH + plan.initial_gap_m
+    column = [Vehicle(first + (plan.n_ahead - 1 - i) * (CAR_LENGTH + plan.initial_gap_m), 0.0,
+                      float(plan.lead_speed[0]), "column") for i in range(plan.n_ahead)]
+    lead = column[-1]
+    lead.role = "lead"
+    vehicles = column + [Vehicle(ego_x + offset, LANE_WIDTH, NEIGHBOR_SPEED_FACTOR * float(plan.lead_speed[0]), "neighbor")
+                         for offset in NEIGHBOR_OFFSETS_M[:plan.neighbor_cars]]
+    drivers = {}
     cut_in = next(iter(plan.events_of("cut_in")), None)
     overtake = next(iter(plan.events_of("overtake")), None)
 
     for i, target in enumerate(plan.lead_speed):
         t = i * dt
         # --- traffic ---
+        column[0].speed += float(np.clip(target - column[0].speed, -6 * dt, 3 * dt))
+        for k in range(1, len(column)):
+            front, car = column[k - 1], column[k]
+            if k not in drivers:
+                drivers[k] = follower_driver(plan, k)
+            accel = drivers[k].accel(t, car.speed, front.x - (car.x + CAR_LENGTH), front.speed)
+            car.speed = max(0.0, car.speed + accel * dt)
         for v in vehicles:
-            if v.role in ("lead", "cut_in_lead"):
-                v.speed += float(np.clip(target - v.speed, -6 * dt, 3 * dt))
+            if v.role == "neighbor":
+                v.speed += float(np.clip(NEIGHBOR_SPEED_FACTOR * target - v.speed, -6 * dt, 3 * dt))
         lead.lateral = 0.15 * math.sin(2 * math.pi * t / 7.0) if lead.role == "lead" else lead.lateral
         if overtake and overtake.active(t) and not any(v.role == "overtake" for v in vehicles):
             vehicles.append(Vehicle(ego_x - 8.0, LANE_WIDTH, ego_speed + 3.0, "overtake"))
@@ -180,12 +199,18 @@ def generate(name, seed, cfg, duration_s=90.0):
                 vehicles.append(car)
             progress = (t - cut_in.t_start) / (cut_in.t_end - cut_in.t_start)
             car.lateral = LANE_WIDTH * (1.0 - progress)
-            lead.lateral = -LANE_WIDTH * progress           # the old lead changes lane
+            if plan.n_ahead == 1:
+                lead.lateral = -LANE_WIDTH * progress       # the old lead changes lane (in a jam it stays ahead)
         elif cut_in and t >= cut_in.t_end:
             car = next((v for v in vehicles if v.role == "cut_in"), None)
             if car is not None:
                 car.role, car.lateral = "cut_in_lead", 0.0
-                vehicles.remove(lead)
+                if plan.n_ahead == 1:
+                    vehicles.remove(lead)
+                    column[0] = car
+                else:
+                    lead.role = "column"
+                    column.append(car)                      # it joins the column behind the old lead
                 lead = car
         for v in vehicles:
             if v.role == "overtake":
