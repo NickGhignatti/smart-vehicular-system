@@ -29,25 +29,28 @@ from svs.data.recording import FrameData, Recording, RecordingMeta
 from svs.hud import draw_warning_hud
 from svs.perception.detector import InstanceSegmentationDetector, YoloDetector
 from svs.pipeline import Pipeline
-from svs.scenarios import DriverModel, approach_accel, make_scenario
-from svs.sim.ground_truth import nearest_lead_truth, speed_mps
+from svs.scenarios import DriverModel, approach_accel, follower_driver, make_scenario
+from svs.sim.ground_truth import lead_truth, nearest_lead_truth, speed_mps
 from svs.sim.sensors import SensorSync, image_to_bgr, image_to_bgra, radar_to_array, spawn_camera, spawn_radar
 from svs.sim.session import CarlaSession
-from svs.sim.spawn import follow_spectator, pick_vehicle_bp, spawn_ego_and_lead
+from svs.sim.spawn import follow_spectator, pick_vehicle_bp, spawn_column
 from svs.sim.traffic import LaneKeeper, adjacent_lane, driving_waypoint, spawn_in_lane
 
 log = logging.getLogger(__name__)
 
 SAFETY_GAP_M = 1.0
+NEIGHBOR_SPEED_FACTOR = 0.85            # jam_neighbors: the adjacent lane crawls a bit slower than the column
+NEIGHBOR_OFFSETS_M = (-12.0, 6.0, 24.0)  # along the lane, relative to the ego start
 
 
 class ScriptedVehicle:
     """A vehicle driven by a speed target + lane keeping."""
 
-    def __init__(self, carla_map, actor, lane_id=None):
+    def __init__(self, carla_map, actor, lane_id=None, initial_speed=None):
         self.actor = actor
         self.speed = SpeedController()
-        self.reference = AccelToSpeed(speed_mps(actor))
+        # initial_speed: a velocity set at spawn is not always visible in get_velocity() before the first tick.
+        self.reference = AccelToSpeed(speed_mps(actor) if initial_speed is None else initial_speed)
         self.lane = LaneKeeper(carla_map, actor, lane_id)
 
     def drive(self, dt, target_speed):
@@ -84,15 +87,21 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
         world, carla_map = sim.world, sim.world.get_map()
         world.set_weather(_weather(weather))
 
-        ego, lead, start_wp = spawn_ego_and_lead(world, random.Random(seed), gap_m=plan.initial_gap_m + 4.5,
-                                                 straight_len_m=150.0)
+        v0 = plan.ego_initial_speed_mps
+        ego, column, start_wp = spawn_column(world, random.Random(seed), plan.n_ahead, gap_m=plan.initial_gap_m + 4.5,
+                                             straight_len_m=150.0, speed_mps=v0)
         sim.track(ego)
-        sim.track(lead)
-        vehicles = [lead]
-        lead_driver = ScriptedVehicle(carla_map, lead)
+        for car in column:
+            sim.track(car)
+        lead = column[-1]                      # the car right in front of the ego
+        vehicles = list(column)
+        lead_driver = ScriptedVehicle(carla_map, column[0], initial_speed=v0)     # only the leader follows the profile
+        followers = [(ScriptedVehicle(carla_map, car, initial_speed=v0), follower_driver(plan, i))
+                     for i, car in enumerate(column) if i > 0]
+        neighbors = _spawn_neighbors(world, carla_map, plan, start_wp, sim, vehicles, rng)
         ego_lane = LaneKeeper(carla_map, ego)
         ego_speed_ctrl = SpeedController()
-        ego_reference = AccelToSpeed()
+        ego_reference = AccelToSpeed(v0)
         driver = DriverModel(plan)
         if scenario == "approach":
             lead.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
@@ -160,6 +169,11 @@ def run(cfg, scenario="stop_and_go", seed=42, seconds=90.0, mode="fused", contro
                 # --- scripted traffic ---
                 if scenario != "approach":      # the parked lead keeps its hand brake
                     lead_driver.drive(dt, float(plan.lead_speed[step]))
+                for (car, car_driver), ahead in zip(followers, column):      # column[k] is in front of followers[k]
+                    seen = lead_truth(car.actor, ahead)
+                    car.drive_accel(dt, car_driver.accel(t, speed_mps(car.actor), seen.gap_m, seen.lead_speed_mps))
+                for car in neighbors:
+                    car.drive(dt, NEIGHBOR_SPEED_FACTOR * float(plan.lead_speed[step]))
                 _update_events(world, carla_map, plan, t, ego, lead, vehicles, others, sim, rng, ego_v)
                 for role, car in others.items():
                     if car is None:
@@ -237,6 +251,28 @@ def pedal_mapping_report(log_array, ccfg, lag_frames=6):
         current = getattr(ccfg, key)
         lines.append(f"{name}: actual/commanded = {ratio:.2f} -> suggest --set control.{key}={current / max(ratio, 0.1):.3f}")
     log.info("Pedal mapping check (%d samples): %s", len(log_array), "; ".join(lines))
+
+
+def _spawn_neighbors(world, carla_map, plan, start_wp, sim, vehicles, rng):
+    """plan.neighbor_cars cars in the adjacent lane around the ego start (skipped with a warning if impossible)."""
+    if not plan.neighbor_cars:
+        return []
+    side = adjacent_lane(start_wp)
+    if side is None:
+        log.warning("No adjacent lane for the neighbour cars; skipped")
+        return []
+    speed = NEIGHBOR_SPEED_FACTOR * plan.ego_initial_speed_mps
+    cars = []
+    for offset in NEIGHBOR_OFFSETS_M[:plan.neighbor_cars]:
+        bp = pick_vehicle_bp(world, "svs_neighbor", ("vehicle.audi.a2", "vehicle.nissan.micra"), rng)
+        actor = spawn_in_lane(world, bp, start_wp, offset, side, speed_mps=speed)
+        if actor is None:
+            log.warning("Could not spawn the neighbour car at %+.0f m", offset)
+            continue
+        sim.track(actor)
+        vehicles.append(actor)
+        cars.append(ScriptedVehicle(carla_map, actor, side.lane_id, initial_speed=speed))
+    return cars
 
 
 def _update_events(world, carla_map, plan, t, ego, lead, vehicles, others, sim, rng, ego_v):

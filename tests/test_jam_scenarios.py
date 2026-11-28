@@ -42,6 +42,7 @@ def test_jam_scenarios_describe_a_column():
     assert make_scenario("jam_neighbors", 5).neighbor_cars > 0
     assert make_scenario("jam_cut_in", 5).events_of("cut_in")
     assert 4.0 <= make_scenario("jam_queue", 5).initial_gap_m <= 7.0       # bumper to bumper, much tighter than stop_and_go
+    assert make_scenario("jam_cut_in", 5).initial_gap_m >= 9.0             # a car must fit between the ego and the column
 
 
 def test_single_lead_scenarios_are_unchanged():

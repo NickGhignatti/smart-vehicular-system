@@ -132,7 +132,8 @@ def make_scenario(name, seed, duration_s=90.0, dt=0.05):
         profile, gap, v0 = np.full(n, PHANTOM_CRUISE_MPS), 12.0, PHANTOM_CRUISE_MPS   # ~ IDM equilibrium gap
     else:
         profile = _stop_and_go_profile(n, dt, rng)
-        gap, v0 = float(rng.uniform(4.0, 7.0) if jam else rng.uniform(10.0, 15.0)), 0.0
+        low, high = (10.0, 13.0) if name == "jam_cut_in" else (4.0, 7.0) if jam else (10.0, 15.0)   # a cut-in needs room
+        gap, v0 = float(rng.uniform(low, high)), 0.0
     plan = ScenarioPlan(name, seed, duration_s, dt, profile, initial_gap_m=gap, ego_initial_speed_mps=v0,
                         events=_distractions(duration_s, rng), n_ahead=JAM_CARS if jam else 1,
                         neighbor_cars=3 if name == "jam_neighbors" else 0)
